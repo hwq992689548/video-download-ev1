@@ -1,0 +1,97 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:share_plus/share_plus.dart';
+
+import '../../data/database.dart';
+import '../../data/repositories/repositories.dart';
+
+class VideoPlayerScreen extends StatefulWidget {
+  const VideoPlayerScreen({super.key, required this.video});
+
+  final VideoRecord video;
+
+  static Future<void> shareVideo(BuildContext context, VideoRecord video) async {
+    final file = File(video.filePath);
+    if (!await file.exists()) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('文件不存在，可能已被删除')),
+        );
+      }
+      return;
+    }
+    await Share.shareXFiles(
+      [XFile(video.filePath, name: video.displayName)],
+      subject: video.displayName,
+    );
+  }
+
+  static Future<void> revealInFinder(VideoRecord video) async {
+    await OpenFilex.open(video.filePath);
+  }
+
+  static Future<void> deleteVideo(
+    VideoRecord video,
+    VideoRepository repo,
+  ) async {
+    final file = File(video.filePath);
+    if (await file.exists()) {
+      await file.delete();
+    }
+    await repo.deleteById(video.id);
+  }
+
+  @override
+  State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
+}
+
+class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
+  late final Player _player;
+  late final VideoController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _player = Player();
+    _controller = VideoController(_player);
+    _player.open(Media(widget.video.filePath), play: true);
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.video.displayName, overflow: TextOverflow.ellipsis),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share),
+            onPressed: () => VideoPlayerScreen.shareVideo(context, widget.video),
+          ),
+          IconButton(
+            icon: const Icon(Icons.folder_open),
+            onPressed: () => VideoPlayerScreen.revealInFinder(widget.video),
+          ),
+        ],
+      ),
+      body: Center(
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: Video(
+            controller: _controller,
+            controls: AdaptiveVideoControls,
+          ),
+        ),
+      ),
+    );
+  }
+}
