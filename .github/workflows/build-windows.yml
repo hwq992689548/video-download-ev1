@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -38,3 +41,11 @@ jobs:
         with:
           name: video_download_ev1-windows-x64
           path: video_download_ev1-windows-x64.zip
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-v${{ github.run_number }}
+          name: Windows v${{ github.run_number }}
+          files: video_download_ev1-windows-x64.zip
+          generate_release_notes: true
