@@ -11,8 +11,11 @@ import '../downloads/video_player_screen.dart';
 /// Fixed tab id for the test page sniff registry bucket.
 const kTestDownloadTabId = '__download_test__';
 
-const _defaultTestUrl =
+const _ev1TestUrl =
     'https://dws4jd-video-bak.baijiayun.com/00-x-upload/video/207233243_a8f1dae214f353a566ee392390c1d7f7_yQgUFTXm_mp4/207233243_a8f1dae214f353a566ee392390c1d7f7_yQgUFTXm.ev1?t=6a9f15c8&sign=d1afdff06b69494edb077db832846356&fid=198401516&uuid=7b8fc57f-f63d-5f36-b584-5056301f44d9';
+
+const _ev2TestUrl =
+    'https://dws4jd-video-bak.baijiayun.com/00-x-upload/video/185726408_977a448fe8060560f94b0d9e741f2752_VDmS8In1_mp4/185726408_977a448fe8060560f94b0d9e741f2752_VDmS8In1.ev2?t=6a9f4223&sign=72c006a8ee5a3a95403783dd10cbc1e9&uuid=3dedea7a-b262-f27e-a995-afb1da12e77c';
 
 class TestDownloadPage extends ConsumerStatefulWidget {
   const TestDownloadPage({super.key});
@@ -22,7 +25,7 @@ class TestDownloadPage extends ConsumerStatefulWidget {
 }
 
 class _TestDownloadPageState extends ConsumerState<TestDownloadPage> {
-  final _urlController = TextEditingController(text: _defaultTestUrl);
+  final _urlController = TextEditingController(text: _ev1TestUrl);
   final _logs = <String>[];
 
   bool _probing = false;
@@ -57,14 +60,14 @@ class _TestDownloadPageState extends ConsumerState<TestDownloadPage> {
     });
 
     if (!SniffRegistry.isEv1Url(url)) {
-      setState(() => _probeError = '不是有效的 .ev1 链接（路径需包含 .ev1）');
+      setState(() => _probeError = '不是有效的 .ev1 / .ev2 链接');
       _log('探测失败：URL 格式不对');
       return;
     }
 
     // 格式正确就先加入嗅探列表，网络探测失败也不影响显示
     ref.read(sniffRegistryProvider).register(kTestDownloadTabId, url);
-    _log('已识别 .ev1 链接，加入嗅探列表');
+    _log('已识别视频链接，加入嗅探列表');
 
     setState(() => _probing = true);
     _log('验证链接可达性…');
@@ -134,7 +137,7 @@ class _TestDownloadPageState extends ConsumerState<TestDownloadPage> {
               status: SniffStatus.downloading,
               progress: 1,
             );
-            _log('EV1 → FLV 转换中…');
+            _log('EV1/EV2 → FLV 转换中…');
           case DownloadJobStatus.completed:
             registry.updateEntry(
               kTestDownloadTabId,
@@ -144,6 +147,7 @@ class _TestDownloadPageState extends ConsumerState<TestDownloadPage> {
             );
             _log('✓ 下载完成，已写入 Documents/videos/');
           case DownloadJobStatus.failed:
+          case DownloadJobStatus.convertFailed:
             registry.updateEntry(
               kTestDownloadTabId,
               entry.url,
@@ -156,6 +160,16 @@ class _TestDownloadPageState extends ConsumerState<TestDownloadPage> {
     );
   }
 
+  void _useSampleUrl(String url, String label) {
+    _urlController.text = url;
+    setState(() {
+      _probeError = null;
+      _headStatus = null;
+      _contentLength = null;
+    });
+    _log('已填入 $label 样例链接');
+  }
+
   @override
   Widget build(BuildContext context) {
     final registry = ref.watch(sniffRegistryProvider);
@@ -164,29 +178,43 @@ class _TestDownloadPageState extends ConsumerState<TestDownloadPage> {
     final videos = ref.watch(allVideosStreamProvider).value ?? [];
     final videoRepo = ref.watch(videoRepositoryProvider);
 
-    return SafeArea(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              '下载流程测试',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TextField(
-              controller: _urlController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: '.ev1 链接',
-                border: OutlineInputBorder(),
-                hintText: '粘贴猫抓嗅探到的链接',
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('下载流程测试'),
+      ),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: TextField(
+                controller: _urlController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: '.ev1 / .ev2 链接',
+                  border: OutlineInputBorder(),
+                  hintText: '粘贴猫抓嗅探到的链接',
+                ),
               ),
             ),
-          ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => _useSampleUrl(_ev1TestUrl, 'EV1'),
+                    child: const Text('EV1 样例'),
+                  ),
+                  OutlinedButton(
+                    onPressed: () => _useSampleUrl(_ev2TestUrl, 'EV2'),
+                    child: const Text('EV2 样例'),
+                  ),
+                ],
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -276,6 +304,7 @@ class _TestDownloadPageState extends ConsumerState<TestDownloadPage> {
                   ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -338,7 +367,7 @@ class _TestSniffTile extends StatelessWidget {
             SniffStatus.downloading => entry.progress > 0
                 ? '下载/转换 ${(entry.progress * 100).toStringAsFixed(0)}%'
                 : '处理中…',
-            SniffStatus.done => '已完成 · 去「下载」Tab 播放',
+            SniffStatus.done => '已完成 · 去「视频列表」Tab 播放',
             SniffStatus.failed => '失败: ${entry.error ?? ''}',
           };
 

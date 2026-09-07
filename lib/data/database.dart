@@ -48,19 +48,44 @@ class DownloadTasks extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
-@DriftDatabase(tables: [VideoRecords, Bookmarks, DownloadTasks])
+/// User-saved .ev1 links from the sniff panel (for later copy/download).
+class RecordedLinks extends Table {
+  TextColumn get id => text()();
+  TextColumn get url => text()();
+  DateTimeColumn get recordedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+@DriftDatabase(tables: [VideoRecords, Bookmarks, DownloadTasks, RecordedLinks])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) async {
+          await m.createAll();
+        },
         onUpgrade: (m, from, to) async {
           if (from < 2) {
             await m.createTable(downloadTasks);
           }
+          if (from < 4) {
+            await m.createTable(recordedLinks);
+          }
+        },
+        beforeOpen: (details) async {
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS recorded_links (
+              id TEXT NOT NULL PRIMARY KEY,
+              url TEXT NOT NULL,
+              recorded_at INTEGER NOT NULL
+            )
+          ''');
         },
       );
 }

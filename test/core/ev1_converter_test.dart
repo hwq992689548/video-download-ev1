@@ -43,5 +43,6 @@ void main() {
     r.register('t', 'https://x.com/a.ev1');
     expect(r.entriesFor('t').length, 1);
     expect(SniffRegistry.isEv1Url('https://x.com/a.EV1?q=1'), isTrue);
+    expect(SniffRegistry.isEv1Url('https://x.com/a.ev2?sign=1'), isTrue);
   });
 }

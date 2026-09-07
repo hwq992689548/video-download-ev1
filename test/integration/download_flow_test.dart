@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
-import 'package:video_download_ev1/core/ev1_converter.dart';
+import 'package:video_download_ev1/core/baijiayun_converter.dart';
 
 /// Mirrors app storage layout:
 /// - Documents/videos/  → final .flv (same as getApplicationDocumentsDirectory()/videos)
@@ -42,7 +42,7 @@ void main() {
       expect(rawSize, greaterThan(100));
 
       // Step 2: convert (same as DownloadManager._converter.convert)
-      await Ev1Converter().convert(inputPath: rawPath, outputPath: tmpFlvPath);
+      await BaijiayunConverter().convert(inputPath: rawPath, outputPath: tmpFlvPath);
       await File(tmpFlvPath).copy(finalPath);
 
       // Step 3: cleanup temp (same as DownloadManager finally block)

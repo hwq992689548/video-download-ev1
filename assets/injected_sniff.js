@@ -2,19 +2,63 @@
   if (window.__ev1SniffInstalled) return;
   window.__ev1SniffInstalled = true;
 
-  const seen = new Set();
+  const urlTitles = new Map();
+  let lastPlayVid = '';
 
-  function isEv1(url) {
-    return typeof url === 'string' && /\.ev1(\?|#|$)/i.test(url);
+  function isSniffableVideo(url) {
+    return typeof url === 'string' && /\.ev[12](\?|#|$)/i.test(url);
+  }
+
+  function cleanText(value) {
+    return String(value || '')
+      .replace(/\u00a0/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function extractVidFromUrl(url) {
+    const s = String(url || '');
+    const fromQuery = s.match(/[?&]vid=(\d+)/i);
+    if (fromQuery) return fromQuery[1];
+    const fromPath = s.match(/\/(\d{6,})_/);
+    if (fromPath) return fromPath[1];
+    const fromFile = s.match(/\/(\d{6,})\.ev[12]/i);
+    if (fromFile) return fromFile[1];
+    return '';
+  }
+
+  function trackPlayVid(url) {
+    const s = String(url || '');
+    const match = s.match(/[?&]vid=(\d+)/i);
+    if (!match) return;
+    if (/getPlayToken|getPlayUrl|listVideoKeyFrame/i.test(s)) {
+      lastPlayVid = match[1];
+    }
+  }
+
+  function collectTitleInfo(forUrl) {
+    return {
+      playVid: extractVidFromUrl(forUrl || '') || lastPlayVid,
+      chosen: '',
+    };
   }
 
   function notify(url) {
-    if (!url || !isEv1(url) || seen.has(url)) return;
-    seen.add(url);
+    if (!url || !isSniffableVideo(url)) return;
+
+    const titleInfo = collectTitleInfo(url);
+    const chosen = titleInfo.chosen || '';
+    const prev = urlTitles.get(url);
+    if (prev !== undefined && chosen === prev) return;
+    urlTitles.set(url, chosen);
 
     function post() {
       if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
-        window.flutter_inappwebview.callHandler('ev1Detected', url);
+        window.flutter_inappwebview.callHandler(
+          'ev1Detected',
+          url,
+          JSON.stringify(titleInfo),
+        );
         return true;
       }
       return false;
@@ -30,6 +74,7 @@
 
   function check(url) {
     if (url == null) return;
+    trackPlayVid(url);
     notify(String(url));
   }
 

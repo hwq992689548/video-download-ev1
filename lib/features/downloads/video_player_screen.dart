@@ -3,9 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:open_filex/open_filex.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/reveal_in_file_manager.dart';
 import '../../data/database.dart';
 import '../../data/repositories/repositories.dart';
 
@@ -30,8 +30,26 @@ class VideoPlayerScreen extends StatefulWidget {
     );
   }
 
-  static Future<void> revealInFinder(VideoRecord video) async {
-    await OpenFilex.open(video.filePath);
+  static Future<void> revealInFileManager(
+    BuildContext context,
+    VideoRecord video,
+  ) async {
+    final file = File(video.filePath);
+    if (!await file.exists()) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('文件不存在，可能已被删除')),
+        );
+      }
+      return;
+    }
+
+    final ok = await RevealInFileManager.reveal(video.filePath);
+    if (context.mounted && !ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法打开文件所在目录')),
+      );
+    }
   }
 
   static Future<void> deleteVideo(
@@ -79,7 +97,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.folder_open),
-            onPressed: () => VideoPlayerScreen.revealInFinder(widget.video),
+            tooltip: '打开所在目录',
+            onPressed: () =>
+                VideoPlayerScreen.revealInFileManager(context, widget.video),
           ),
         ],
       ),

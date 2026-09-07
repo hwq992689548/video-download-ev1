@@ -36,3 +36,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/injected_sniff.js
+    - assets/ev2-decrypt.wasm
+    - assets/ev2_convert.mjs

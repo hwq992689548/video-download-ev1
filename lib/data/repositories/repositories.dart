@@ -123,3 +123,44 @@ class DownloadTaskRepository {
         ..where((t) => t.id.equals(id)))
       .getSingleOrNull();
 }
+
+class RecordedLinkRepository {
+  RecordedLinkRepository(this._db);
+
+  final AppDatabase _db;
+
+  Stream<List<RecordedLink>> watchAll() {
+    return (_db.select(_db.recordedLinks)
+          ..orderBy([(t) => OrderingTerm.desc(t.recordedAt)]))
+        .watch();
+  }
+
+  Future<List<RecordedLink>> getAll() {
+    return (_db.select(_db.recordedLinks)
+          ..orderBy([(t) => OrderingTerm.desc(t.recordedAt)]))
+        .get();
+  }
+
+  Future<bool> existsByUrl(String url) async {
+    final key = Ev1Url.normalizeKey(url);
+    final rows = await _db.select(_db.recordedLinks).get();
+    return rows.any((row) => Ev1Url.normalizeKey(row.url) == key);
+  }
+
+  RecordedLink? findByUrlIn(List<RecordedLink> links, String url) {
+    final key = Ev1Url.normalizeKey(url);
+    for (final row in links) {
+      if (Ev1Url.normalizeKey(row.url) == key) return row;
+    }
+    return null;
+  }
+
+  Future<void> insert(RecordedLinksCompanion row) =>
+      _db.into(_db.recordedLinks).insert(row);
+
+  Future<void> deleteById(String id) => (_db.delete(_db.recordedLinks)
+        ..where((t) => t.id.equals(id)))
+      .go();
+
+  Future<void> deleteAll() => _db.delete(_db.recordedLinks).go();
+}

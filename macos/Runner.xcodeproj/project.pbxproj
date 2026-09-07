@@ -242,6 +242,7 @@
 				33CC10E92044A3C60003C045 /* Sources */,
 				33CC10EA2044A3C60003C045 /* Frameworks */,
 				33CC10EB2044A3C60003C045 /* Resources */,
+				B7NODE0012BUNDLE000000001 /* Bundle Node.js */,
 				33CC110E2044A8840003C045 /* Bundle Framework */,
 				3399D490228B24CF009A79C7 /* ShellScript */,
 				A4EB3229D1D80127C210B0ED /* [CP] Embed Pods Frameworks */,
@@ -408,6 +409,23 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		B7NODE0012BUNDLE000000001 /* Bundle Node.js */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${SRCROOT}/ThirdParty/node/bin/node",
+			);
+			name = "Bundle Node.js";
+			outputPaths = (
+				"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/node/bin/node",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/scripts/bundle_node.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 		E4B18EBF9BC04056CFAECA52 /* [CP] Check Pods Manifest.lock */ = {

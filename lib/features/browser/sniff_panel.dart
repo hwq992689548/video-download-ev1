@@ -7,6 +7,7 @@ import '../../core/sniff_registry.dart';
 import '../../data/database.dart';
 import '../downloads/video_player_screen.dart';
 import 'mobile_browser_config.dart';
+import '../test/recorded_links_page.dart';
 
 class SniffPanel extends ConsumerWidget {
   const SniffPanel({super.key, required this.tabId, required this.onClose});
@@ -32,7 +33,7 @@ class SniffPanel extends ConsumerWidget {
           child: Column(
             children: [
               ListTile(
-                title: const Text('嗅探到的 .ev1 资源'),
+                title: const Text('嗅探到的视频资源'),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -49,8 +50,8 @@ class SniffPanel extends ConsumerWidget {
                           padding: EdgeInsets.all(16),
                           child: Text(
                             '播放视频后自动嗅探。\n'
-                            '若未出现：点地址栏右侧雷达图标打开此面板；\n'
-                            '或去「测试」Tab 直接粘贴 .ev1 链接。',
+                            '若未出现：点地址栏右侧「探测链接」打开此面板；\n'
+                            '或在「视频列表」Tab 右上角使用下载测试。',
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -94,7 +95,11 @@ class _SniffTile extends ConsumerWidget {
     final registry = ref.read(sniffRegistryProvider);
     final manager = ref.watch(downloadManagerProvider).value;
     final repo = ref.watch(videoRepositoryProvider);
+    final recordedLinks = ref.watch(recordedLinksStreamProvider).value ?? [];
+    final recordedRepo = ref.watch(recordedLinkRepositoryProvider);
     final existing = repo.findByEv1UrlIn(videos, entry.url);
+    final isRecorded = recordedRepo.findByUrlIn(recordedLinks, entry.url) != null;
+    final displayName = existing?.displayName ?? SniffRegistry.displayTitle(entry);
 
     Widget trailing;
     if (existing != null) {
@@ -117,16 +122,38 @@ class _SniffTile extends ConsumerWidget {
         child: CircularProgressIndicator(value: entry.progress),
       );
     } else {
-      trailing = FilledButton(
-        onPressed: manager == null ? null : () => _download(context, registry, manager),
-        child: const Text('下载'),
+      trailing = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          OutlinedButton(
+            onPressed: isRecorded
+                ? null
+                : () => recordEv1Link(context, ref, entry.url),
+            child: Text(isRecorded ? '已记录' : '记录'),
+          ),
+          const SizedBox(width: 8),
+          if (entry.status == SniffStatus.failed)
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: manager == null
+                  ? null
+                  : () => _download(context, ref, registry, manager),
+            )
+          else
+            FilledButton(
+              onPressed: manager == null
+                  ? null
+                  : () => _download(context, ref, registry, manager),
+              child: const Text('下载'),
+            ),
+        ],
       );
     }
 
     final subtitle = existing != null
-        ? '已下载 · ${existing.displayName}'
+        ? '已下载'
         : switch (entry.status) {
-            SniffStatus.pending => '待下载',
+            SniffStatus.pending => null,
             SniffStatus.downloading =>
               '下载中 ${(entry.progress * 100).toStringAsFixed(0)}%',
             SniffStatus.done => '已完成',
@@ -139,55 +166,75 @@ class _SniffTile extends ConsumerWidget {
         color: existing != null ? Colors.green : null,
       ),
       title: Text(
-        entry.url,
+        displayName,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 13),
       ),
-      subtitle: Text(subtitle),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            entry.url,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          if (subtitle != null) Text(subtitle),
+        ],
+      ),
       trailing: trailing,
     );
   }
 
   Future<void> _download(
     BuildContext context,
+    WidgetRef ref,
     SniffRegistry registry,
     DownloadManager manager,
   ) async {
+    await ensureEv1LinkRecorded(ref, entry.url);
     registry.updateEntry(tabId, entry.url, status: SniffStatus.downloading);
-    await manager.enqueue(entry.url, onUpdate: (state) {
-      switch (state.status) {
-        case DownloadJobStatus.downloading:
-          registry.updateEntry(
-            tabId,
-            entry.url,
-            status: SniffStatus.downloading,
-            progress: state.progress,
-          );
-        case DownloadJobStatus.converting:
-          registry.updateEntry(
-            tabId,
-            entry.url,
-            status: SniffStatus.downloading,
-            progress: 1,
-          );
-        case DownloadJobStatus.completed:
-          registry.updateEntry(
-            tabId,
-            entry.url,
-            status: SniffStatus.done,
-            progress: 1,
-          );
-        case DownloadJobStatus.failed:
-          registry.updateEntry(
-            tabId,
-            entry.url,
-            status: SniffStatus.failed,
-            error: state.error,
-          );
-        case DownloadJobStatus.queued:
-          break;
-      }
-    });
+    await manager.enqueue(
+      entry.url,
+      suggestedName: entry.title,
+      onUpdate: (state) {
+        switch (state.status) {
+          case DownloadJobStatus.downloading:
+            registry.updateEntry(
+              tabId,
+              entry.url,
+              status: SniffStatus.downloading,
+              progress: state.progress,
+            );
+          case DownloadJobStatus.converting:
+            registry.updateEntry(
+              tabId,
+              entry.url,
+              status: SniffStatus.downloading,
+              progress: 1,
+            );
+          case DownloadJobStatus.completed:
+            registry.updateEntry(
+              tabId,
+              entry.url,
+              status: SniffStatus.done,
+              progress: 1,
+            );
+          case DownloadJobStatus.failed:
+          case DownloadJobStatus.convertFailed:
+            registry.updateEntry(
+              tabId,
+              entry.url,
+              status: SniffStatus.failed,
+              error: state.error,
+            );
+          case DownloadJobStatus.queued:
+            break;
+        }
+      },
+    );
   }
 }

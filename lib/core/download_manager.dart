@@ -6,12 +6,19 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
-import 'ev1_converter.dart';
+import 'baijiayun_converter.dart';
 import 'resumable_download.dart';
 import '../data/database.dart';
 import '../data/repositories/repositories.dart';
 
-enum DownloadJobStatus { queued, downloading, converting, completed, failed }
+enum DownloadJobStatus {
+  queued,
+  downloading,
+  converting,
+  completed,
+  failed,
+  convertFailed,
+}
 
 class DownloadJobState {
   const DownloadJobState({
@@ -32,7 +39,7 @@ class DownloadJobState {
 class DownloadManager {
   DownloadManager({
     required Dio dio,
-    required Ev1Converter converter,
+    required BaijiayunConverter converter,
     required VideoRepository videos,
     required DownloadTaskRepository tasks,
     required Directory videosDir,
@@ -47,7 +54,7 @@ class DownloadManager {
         _tempDir = tempDir;
 
   final Dio _dio;
-  final Ev1Converter _converter;
+  final BaijiayunConverter _converter;
   final VideoRepository _videos;
   final DownloadTaskRepository _tasks;
   final Directory _videosDir;
@@ -57,6 +64,9 @@ class DownloadManager {
 
   final List<_QueuedJob> _queue = [];
   final Set<String> _queuedIds = {};
+  final Set<String> _cancelledIds = {};
+  final Map<String, CancelToken> _cancelTokens = {};
+  final Set<String> _activeJobIds = {};
   int _active = 0;
   final _uuid = const Uuid();
 
@@ -106,14 +116,83 @@ class DownloadManager {
   Future<void> retry(String taskId) async {
     final task = await _tasks.getById(taskId);
     if (task == null) return;
+    await _prepareRawFileForResume(task);
     await _tasks.updateProgress(
       id: taskId,
-      bytesDownloaded: task.bytesDownloaded,
+      bytesDownloaded: await _existingBytes(task.rawPath),
       totalBytes: task.totalBytes,
       status: 'queued',
+      error: null,
     );
     await _enqueueExisting(task);
   }
+
+  Future<void> retryConvert(String taskId) async {
+    final task = await _tasks.getById(taskId);
+    if (task == null) return;
+
+    final rawFile = File(task.rawPath);
+    if (!await rawFile.exists()) {
+      await retry(taskId);
+      return;
+    }
+
+    await _prepareRawFileForResume(task);
+    final rawSize = await rawFile.length();
+    if (!_isDownloadComplete(rawSize, task.totalBytes)) {
+      await retry(taskId);
+      return;
+    }
+
+    await _tasks.updateProgress(
+      id: taskId,
+      bytesDownloaded: rawSize,
+      totalBytes: task.totalBytes,
+      status: 'converting',
+      error: null,
+    );
+    await _enqueueExisting(task);
+  }
+
+  Future<void> cancel(String taskId) async {
+    _cancelledIds.add(taskId);
+    _cancelTokens[taskId]?.cancel('User cancelled');
+    _queue.removeWhere((job) => job.id == taskId);
+    _queuedIds.remove(taskId);
+
+    final task = await _tasks.getById(taskId);
+    if (task == null) {
+      _cancelledIds.remove(taskId);
+      _cancelTokens.remove(taskId);
+      return;
+    }
+
+    await _cleanupTaskFiles(
+      jobId: task.id,
+      rawPath: task.rawPath,
+      videoId: task.videoId,
+    );
+    await _tasks.deleteById(taskId);
+    _cancelTokens.remove(taskId);
+    if (!_activeJobIds.contains(taskId)) {
+      _cancelledIds.remove(taskId);
+    }
+  }
+
+  Future<void> _cleanupTaskFiles({
+    required String jobId,
+    required String rawPath,
+    required String videoId,
+  }) async {
+    final tmpFlvPath = p.join(_tempDir.path, '$jobId.flv.tmp');
+    final finalPath = p.join(_videosDir.path, '$videoId.flv');
+    for (final path in [rawPath, tmpFlvPath, finalPath]) {
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    }
+  }
+
+  bool _isCancelled(String jobId) => _cancelledIds.contains(jobId);
 
   Future<void> _enqueueExisting(DownloadTask task) async {
     if (_queuedIds.contains(task.id)) return;
@@ -142,7 +221,12 @@ class DownloadManager {
   Future<void> _pump() async {
     while (_active < maxConcurrent && _queue.isNotEmpty) {
       final job = _queue.removeAt(0);
+      if (_isCancelled(job.id)) {
+        _queuedIds.remove(job.id);
+        continue;
+      }
       _active++;
+      _activeJobIds.add(job.id);
       _runJob(job).whenComplete(() async {
         _active--;
         _queuedIds.remove(job.id);
@@ -154,8 +238,10 @@ class DownloadManager {
   Future<void> _runJob(_QueuedJob job) async {
     final tmpFlvPath = p.join(_tempDir.path, '${job.id}.flv.tmp');
     final finalPath = p.join(_videosDir.path, '${job.videoId}.flv');
+    final cancelToken = CancelToken();
 
     void emit(DownloadJobStatus status, {double progress = 0, String? error}) {
+      if (_isCancelled(job.id)) return;
       job.onUpdate?.call(DownloadJobState(
         id: job.id,
         url: job.url,
@@ -166,17 +252,42 @@ class DownloadManager {
     }
 
     try {
+      if (_isCancelled(job.id)) return;
+      _cancelTokens[job.id] = cancelToken;
+
       await _tempDir.create(recursive: true);
       await _videosDir.create(recursive: true);
 
+      if (_isCancelled(job.id)) return;
+
       final existing = await _tasks.getById(job.id);
-      final knownTotal = existing?.totalBytes;
+      if (existing == null || _isCancelled(job.id)) return;
+
+      final knownTotal = existing.totalBytes;
       var lastDbUpdate = DateTime.fromMillisecondsSinceEpoch(0);
 
-      if (existing?.status == 'converting' && await File(job.rawPath).exists()) {
+      final rawExists = await File(job.rawPath).exists();
+      final rawSize = rawExists ? await File(job.rawPath).length() : 0;
+      final downloadComplete =
+          _isDownloadComplete(rawSize, existing.totalBytes);
+      final skipDownload = rawExists &&
+          downloadComplete &&
+          (existing.status == 'converting' ||
+              existing.status == 'convert_failed');
+
+      if (skipDownload) {
         emit(DownloadJobStatus.converting, progress: 1);
       } else {
-        emit(DownloadJobStatus.downloading);
+        if (rawExists &&
+            existing.totalBytes != null &&
+            existing.totalBytes! > 0 &&
+            rawSize > 0 &&
+            rawSize < existing.totalBytes!) {
+          emit(DownloadJobStatus.downloading,
+              progress: rawSize / existing.totalBytes!);
+        } else {
+          emit(DownloadJobStatus.downloading);
+        }
         await _tasks.updateProgress(
           id: job.id,
           bytesDownloaded: await _existingBytes(job.rawPath),
@@ -184,34 +295,94 @@ class DownloadManager {
           status: 'downloading',
         );
 
-        await _downloadWithResume(
-          job: job,
-          knownTotalBytes: knownTotal,
-          onProgress: (progress, bytesDownloaded, totalBytes) {
-            emit(DownloadJobStatus.downloading, progress: progress);
-            final now = DateTime.now();
-            if (now.difference(lastDbUpdate).inMilliseconds >= 1000) {
-              lastDbUpdate = now;
-              _tasks.updateProgress(
-                id: job.id,
-                bytesDownloaded: bytesDownloaded,
-                totalBytes: totalBytes,
-                status: 'downloading',
-              );
-            }
-          },
+        try {
+          await _downloadWithResume(
+            job: job,
+            cancelToken: cancelToken,
+            knownTotalBytes: knownTotal,
+            bytesDownloaded: existing.bytesDownloaded,
+            taskStatus: existing.status,
+            onProgress: (progress, bytesDownloaded, totalBytes) {
+              if (_isCancelled(job.id)) return;
+              emit(DownloadJobStatus.downloading, progress: progress);
+              final now = DateTime.now();
+              if (now.difference(lastDbUpdate).inMilliseconds >= 1000) {
+                lastDbUpdate = now;
+                _tasks.updateProgress(
+                  id: job.id,
+                  bytesDownloaded: bytesDownloaded,
+                  totalBytes: totalBytes,
+                  status: 'downloading',
+                );
+              }
+            },
+          );
+        } on DioException catch (e) {
+          if (_isCancelled(job.id) || CancelToken.isCancel(e)) return;
+          await _markDownloadFailed(job, tmpFlvPath, finalPath, error: e.toString());
+          return;
+        } catch (e) {
+          if (_isCancelled(job.id)) return;
+          await _markDownloadFailed(job, tmpFlvPath, finalPath, error: e.toString());
+          return;
+        }
+      }
+
+      if (_isCancelled(job.id) || cancelToken.isCancelled) return;
+
+      final rawSizeAfterDownload = await File(job.rawPath).length();
+      if (!_isDownloadComplete(rawSizeAfterDownload, knownTotal)) {
+        throw Exception(
+          'Download incomplete: $rawSizeAfterDownload/${knownTotal ?? "?"} bytes',
         );
       }
 
       await _tasks.updateProgress(
         id: job.id,
-        bytesDownloaded: await File(job.rawPath).length(),
+        bytesDownloaded: rawSizeAfterDownload,
         totalBytes: knownTotal,
         status: 'converting',
       );
       emit(DownloadJobStatus.converting, progress: 1);
 
-      await _converter.convert(inputPath: job.rawPath, outputPath: tmpFlvPath);
+      try {
+        await _converter.convert(
+          inputPath: job.rawPath,
+          outputPath: tmpFlvPath,
+          sourceUrl: job.url,
+        );
+      } catch (e) {
+        if (_isCancelled(job.id)) return;
+        final message = e.toString();
+        if (message.contains('not valid FLV') ||
+            message.contains('Download incomplete')) {
+          await _deleteIfExists(job.rawPath);
+          await _tasks.updateProgress(
+            id: job.id,
+            bytesDownloaded: 0,
+            totalBytes: knownTotal,
+            status: 'failed',
+            error: message.contains('Download incomplete')
+                ? '下载未完成或文件损坏，请点「继续」重新下载'
+                : '解密失败，文件可能已损坏，请点「继续」重新下载',
+          );
+          job.onUpdate?.call(DownloadJobState(
+            id: job.id,
+            url: job.url,
+            status: DownloadJobStatus.failed,
+            error: message.contains('Download incomplete')
+                ? '下载未完成或文件损坏，请点「继续」重新下载'
+                : '解密失败，文件可能已损坏，请点「继续」重新下载',
+          ));
+          await _deleteIfExists(finalPath);
+          await _deleteIfExists(tmpFlvPath);
+          return;
+        }
+        await _markConvertFailed(job, tmpFlvPath, finalPath, error: e.toString());
+        return;
+      }
+
+      if (_isCancelled(job.id) || cancelToken.isCancelled) return;
 
       await File(tmpFlvPath).copy(finalPath);
       final size = await File(finalPath).length();
@@ -236,29 +407,79 @@ class DownloadManager {
         if (await file.exists()) await file.delete();
       }
     } catch (e) {
-      final bytes = await _existingBytes(job.rawPath);
-      await _tasks.updateProgress(
-        id: job.id,
-        bytesDownloaded: bytes,
-        status: 'failed',
-        error: e.toString(),
-      );
-      emit(DownloadJobStatus.failed, error: e.toString());
-      if (await File(finalPath).exists()) {
-        await File(finalPath).delete();
-      }
-      final tmp = File(tmpFlvPath);
-      if (await tmp.exists()) await tmp.delete();
+      if (_isCancelled(job.id)) return;
+      await _markDownloadFailed(job, tmpFlvPath, finalPath, error: e.toString());
+    } finally {
+      _cancelTokens.remove(job.id);
+      _activeJobIds.remove(job.id);
+      _cancelledIds.remove(job.id);
     }
+  }
+
+  Future<void> _markDownloadFailed(
+    _QueuedJob job,
+    String tmpFlvPath,
+    String finalPath, {
+    String? error,
+  }) async {
+    final message = error ?? 'Download failed';
+    final bytes = await _existingBytes(job.rawPath);
+    await _tasks.updateProgress(
+      id: job.id,
+      bytesDownloaded: bytes,
+      status: 'failed',
+      error: message,
+    );
+    job.onUpdate?.call(DownloadJobState(
+      id: job.id,
+      url: job.url,
+      status: DownloadJobStatus.failed,
+      error: message,
+    ));
+    await _deleteIfExists(finalPath);
+    await _deleteIfExists(tmpFlvPath);
+  }
+
+  Future<void> _markConvertFailed(
+    _QueuedJob job,
+    String tmpFlvPath,
+    String finalPath, {
+    String? error,
+  }) async {
+    final message = error ?? 'Conversion failed';
+    final bytes = await _existingBytes(job.rawPath);
+    await _tasks.updateProgress(
+      id: job.id,
+      bytesDownloaded: bytes,
+      status: 'convert_failed',
+      error: message,
+    );
+    job.onUpdate?.call(DownloadJobState(
+      id: job.id,
+      url: job.url,
+      status: DownloadJobStatus.convertFailed,
+      error: message,
+    ));
+    await _deleteIfExists(finalPath);
+    await _deleteIfExists(tmpFlvPath);
+  }
+
+  Future<void> _deleteIfExists(String path) async {
+    final file = File(path);
+    if (await file.exists()) await file.delete();
   }
 
   Future<void> _downloadWithResume({
     required _QueuedJob job,
+    required CancelToken cancelToken,
     required void Function(double progress, int bytesDownloaded, int? totalBytes) onProgress,
     int? knownTotalBytes,
+    int bytesDownloaded = 0,
+    String? taskStatus,
   }) async {
     Object? lastError;
     for (var attempt = 0; attempt < maxDownloadRetries; attempt++) {
+      if (_isCancelled(job.id) || cancelToken.isCancelled) return;
       if (attempt > 0) {
         await Future<void>.delayed(Duration(seconds: attempt * 2));
       }
@@ -266,11 +487,18 @@ class DownloadManager {
         await _downloadOnce(
           url: job.url,
           savePath: job.rawPath,
+          cancelToken: cancelToken,
           knownTotalBytes: knownTotalBytes,
+          bytesDownloaded: bytesDownloaded,
+          taskStatus: taskStatus,
           onProgress: onProgress,
         );
         return;
       } catch (e) {
+        if (_isCancelled(job.id) ||
+            (e is DioException && CancelToken.isCancel(e))) {
+          return;
+        }
         lastError = e;
         if (!_isRetryableDownloadError(e) || attempt == maxDownloadRetries - 1) {
           rethrow;
@@ -283,11 +511,19 @@ class DownloadManager {
   Future<void> _downloadOnce({
     required String url,
     required String savePath,
+    required CancelToken cancelToken,
     required void Function(double progress, int bytesDownloaded, int? totalBytes) onProgress,
     int? knownTotalBytes,
+    int bytesDownloaded = 0,
+    String? taskStatus,
   }) async {
     final file = File(savePath);
-    final startByte = await _existingBytes(savePath);
+    final startByte = await _resumeStartByte(
+      savePath,
+      bytesDownloaded: bytesDownloaded,
+      totalBytes: knownTotalBytes,
+      status: taskStatus,
+    );
     final range = rangeHeaderFor(startByte);
 
     int? lastTotalBytes = knownTotalBytes;
@@ -295,7 +531,10 @@ class DownloadManager {
     await _dio.download(
       url,
       savePath,
+      cancelToken: cancelToken,
       deleteOnError: false,
+      fileAccessMode:
+          startByte > 0 ? FileAccessMode.append : FileAccessMode.write,
       options: range != null ? Options(headers: {'Range': range}) : null,
       onReceiveProgress: (received, total) {
         final progress = ResumableDownloadProgress(
@@ -314,6 +553,65 @@ class DownloadManager {
     if (!await file.exists() || await file.length() == 0) {
       throw Exception('Download produced empty file');
     }
+
+    if (knownTotalBytes != null &&
+        knownTotalBytes > 0 &&
+        await file.length() < knownTotalBytes) {
+      throw Exception(
+        'Download incomplete: ${await file.length()}/$knownTotalBytes bytes',
+      );
+    }
+  }
+
+  bool _isDownloadComplete(int fileSize, int? totalBytes) {
+    if (totalBytes == null || totalBytes <= 0) return fileSize > 0;
+    return fileSize >= totalBytes;
+  }
+
+  Future<void> _prepareRawFileForResume(DownloadTask task) async {
+    await _resumeStartByte(
+      task.rawPath,
+      bytesDownloaded: task.bytesDownloaded,
+      totalBytes: task.totalBytes,
+      status: task.status,
+    );
+  }
+
+  /// Returns the byte offset to request for resume. Deletes corrupt partial files.
+  Future<int> _resumeStartByte(
+    String path, {
+    required int bytesDownloaded,
+    int? totalBytes,
+    String? status,
+  }) async {
+    final file = File(path);
+    if (!await file.exists()) return 0;
+
+    final size = await file.length();
+    if (size == 0) return 0;
+
+    if (totalBytes != null && totalBytes > 0) {
+      if (size > totalBytes) {
+        await file.delete();
+        return 0;
+      }
+
+      final convertFailed = status == 'convert_failed';
+      final downloadFailed = status == 'failed';
+      if (size >= totalBytes && (convertFailed || downloadFailed)) {
+        await file.delete();
+        return 0;
+      }
+
+      if (size > bytesDownloaded &&
+          bytesDownloaded > 0 &&
+          bytesDownloaded < totalBytes) {
+        await file.delete();
+        return 0;
+      }
+    }
+
+    return size;
   }
 
   Future<int> _existingBytes(String path) async {
@@ -334,15 +632,24 @@ class DownloadManager {
 
   String _displayName(String url, String? suggested) {
     if (suggested != null && suggested.trim().isNotEmpty) {
-      final name = suggested.trim();
+      final name = _sanitizeFileName(suggested.trim());
       return name.toLowerCase().endsWith('.flv') ? name : '$name.flv';
     }
     final uri = Uri.tryParse(url);
     final segment = uri?.pathSegments.isNotEmpty == true
         ? uri!.pathSegments.last
         : 'video';
-    final base = segment.replaceAll(RegExp(r'\.ev1$', caseSensitive: false), '');
+    final base = segment.replaceAll(RegExp(r'\.ev[12]$', caseSensitive: false), '');
     return '$base.flv';
+  }
+
+  String _sanitizeFileName(String name) {
+    var sanitized = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    sanitized = sanitized.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (sanitized.length > 120) {
+      sanitized = sanitized.substring(0, 120).trim();
+    }
+    return sanitized.isEmpty ? 'video' : sanitized;
   }
 }
 
@@ -366,7 +673,7 @@ class _QueuedJob {
 
 Future<DownloadManager> createDownloadManager({
   required Dio dio,
-  required Ev1Converter converter,
+  required BaijiayunConverter converter,
   required VideoRepository videos,
   required DownloadTaskRepository tasks,
 }) async {

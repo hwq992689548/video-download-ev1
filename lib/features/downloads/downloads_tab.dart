@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/providers.dart';
+import '../../core/reveal_in_file_manager.dart';
 import '../../data/database.dart';
+import '../../data/repositories/repositories.dart';
+import '../test/recorded_links_page.dart';
+import '../test/test_download_page.dart';
 import 'rename_dialog.dart';
 import 'video_player_screen.dart';
 
@@ -24,6 +30,18 @@ class _DownloadsTabState extends ConsumerState<DownloadsTab> {
     super.dispose();
   }
 
+  Future<void> _openDownloadDirectory() async {
+    final docDir = await getApplicationDocumentsDirectory();
+    final videosDir = p.join(docDir.path, 'videos');
+    final ok = await RevealInFileManager.openDirectory(videosDir);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法打开下载目录')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final repo = ref.watch(videoRepositoryProvider);
@@ -39,9 +57,39 @@ class _DownloadsTabState extends ConsumerState<DownloadsTab> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              '已下载视频',
-              style: Theme.of(context).textTheme.headlineSmall,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '视频列表',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const RecordedLinksPage(),
+                      ),
+                    );
+                  },
+                  child: const Text('链接记录'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const TestDownloadPage(),
+                      ),
+                    );
+                  },
+                  child: const Text('下载测试'),
+                ),
+                TextButton(
+                  onPressed: _openDownloadDirectory,
+                  child: const Text('下载目录'),
+                ),
+              ],
             ),
           ),
           Padding(
@@ -83,7 +131,7 @@ class _DownloadsTabState extends ConsumerState<DownloadsTab> {
                       return Center(
                         child: Text(
                           _query.isEmpty
-                              ? '暂无下载，去浏览器 Tab 嗅探 .ev1 链接'
+                              ? '暂无视频，去浏览器 Tab 嗅探 .ev1 链接'
                               : '没有匹配的视频',
                           style: Theme.of(context).textTheme.bodyLarge,
                         ),
@@ -100,6 +148,13 @@ class _DownloadsTabState extends ConsumerState<DownloadsTab> {
                             onRetry: managerAsync.value == null
                                 ? null
                                 : () => managerAsync.value!.retry(task.id),
+                            onRetryConvert: managerAsync.value == null
+                                ? null
+                                : () =>
+                                    managerAsync.value!.retryConvert(task.id),
+                            onCancel: managerAsync.value == null
+                                ? null
+                                : () => managerAsync.value!.cancel(task.id),
                           );
                         }
                         final video = videos[index - pending.length];
@@ -122,10 +177,24 @@ class PendingDownloadTile extends StatelessWidget {
     super.key,
     required this.task,
     this.onRetry,
+    this.onRetryConvert,
+    this.onCancel,
   });
 
   final DownloadTask task;
   final VoidCallback? onRetry;
+  final VoidCallback? onRetryConvert;
+  final VoidCallback? onCancel;
+
+  bool get _isDownloadFailed => task.status == 'failed';
+  bool get _isConvertFailed => task.status == 'convert_failed';
+
+  bool get _isDownloadComplete {
+    if (task.totalBytes == null || task.totalBytes! <= 0) {
+      return task.bytesDownloaded > 0;
+    }
+    return task.bytesDownloaded >= task.totalBytes!;
+  }
 
   String _statusLabel() {
     return switch (task.status) {
@@ -133,12 +202,19 @@ class PendingDownloadTile extends StatelessWidget {
       'downloading' => '下载中',
       'converting' => '转换中',
       'failed' => '下载失败',
+      'convert_failed' =>
+        _isDownloadComplete ? '转换失败' : '下载未完成',
       _ => task.status,
     };
   }
 
   double _progress() {
-    if (task.status == 'converting') return 1;
+    if (task.status == 'converting') {
+      return 1;
+    }
+    if (task.status == 'convert_failed' && _isDownloadComplete) {
+      return 1;
+    }
     if (task.totalBytes != null && task.totalBytes! > 0) {
       return task.bytesDownloaded / task.totalBytes!;
     }
@@ -153,7 +229,7 @@ class PendingDownloadTile extends StatelessWidget {
     final segment = uri?.pathSegments.isNotEmpty == true
         ? uri!.pathSegments.last
         : 'video';
-    return segment.replaceAll(RegExp(r'\.ev1$', caseSensitive: false), '');
+    return segment.replaceAll(RegExp(r'\.ev[12]$', caseSensitive: false), '');
   }
 
   @override
@@ -161,16 +237,21 @@ class PendingDownloadTile extends StatelessWidget {
     final progress = _progress();
     final showProgress = task.status == 'downloading' ||
         task.status == 'converting' ||
-        (task.status == 'failed' && progress > 0);
+        (task.status == 'convert_failed' && _isDownloadComplete) ||
+        (_isDownloadFailed && progress > 0) ||
+        (task.status == 'convert_failed' && !_isDownloadComplete);
+    final isFailed = _isDownloadFailed || _isConvertFailed;
 
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor: task.status == 'failed'
-            ? Colors.red.shade100
+        backgroundColor: isFailed
+            ? (_isConvertFailed ? Colors.orange.shade100 : Colors.red.shade100)
             : Colors.blue.shade100,
         child: Icon(
-          task.status == 'failed' ? Icons.error_outline : Icons.downloading,
-          color: task.status == 'failed' ? Colors.red : Colors.blue,
+          isFailed ? Icons.error_outline : Icons.downloading,
+          color: isFailed
+              ? (_isConvertFailed ? Colors.orange : Colors.red)
+              : Colors.blue,
         ),
       ),
       title: Text(_title(), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -178,7 +259,7 @@ class PendingDownloadTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            task.status == 'failed' && task.error != null
+            isFailed && task.error != null
                 ? '${_statusLabel()} · ${task.error}'
                 : _statusLabel(),
             maxLines: 2,
@@ -187,7 +268,9 @@ class PendingDownloadTile extends StatelessWidget {
           if (showProgress) ...[
             const SizedBox(height: 6),
             LinearProgressIndicator(value: progress > 0 ? progress : null),
-            if (task.totalBytes != null && task.totalBytes! > 0)
+            if (task.status == 'downloading' &&
+                task.totalBytes != null &&
+                task.totalBytes! > 0)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
@@ -195,19 +278,48 @@ class PendingDownloadTile extends StatelessWidget {
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
+            if (task.status == 'convert_failed' &&
+                !_isDownloadComplete &&
+                task.totalBytes != null &&
+                task.totalBytes! > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '${(progress * 100).toStringAsFixed(0)}% · 需继续下载后再转换',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
           ],
         ],
       ),
-      trailing: task.status == 'failed'
-          ? FilledButton.tonal(
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_isConvertFailed && _isDownloadComplete)
+            FilledButton.tonal(
+              onPressed: onRetryConvert,
+              child: const Text('重新转换'),
+            ),
+          if (_isConvertFailed && !_isDownloadComplete)
+            FilledButton.tonal(
+              onPressed: onRetry,
+              child: const Text('继续下载'),
+            ),
+          if (_isDownloadFailed)
+            FilledButton.tonal(
               onPressed: onRetry,
               child: const Text('继续'),
-            )
-          : const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2),
             ),
+          if (isFailed) const SizedBox(width: 8),
+          OutlinedButton(
+            onPressed: onCancel,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -225,15 +337,45 @@ class VideoListTile extends ConsumerWidget {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
+  Future<void> _share(BuildContext context) async {
+    await VideoPlayerScreen.shareVideo(context, video);
+  }
+
+  Future<void> _delete(BuildContext context, VideoRepository repo) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认删除'),
+        content: Text('删除「${video.displayName}」？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await VideoPlayerScreen.deleteVideo(video, repo);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.watch(videoRepositoryProvider);
     final date = DateFormat('yyyy-MM-dd HH:mm').format(video.downloadedAt);
 
     return ListTile(
-      leading: const CircleAvatar(child: Icon(Icons.movie)),
+      leading: CircleAvatar(
+        backgroundColor: Colors.green.shade100,
+        child: Icon(Icons.movie, color: Colors.green.shade700),
+      ),
       title: Text(video.displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text('${_formatSize(video.fileSizeBytes)} · $date'),
+      subtitle: Text('下载成功 · ${_formatSize(video.fileSizeBytes)} · $date'),
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -242,70 +384,37 @@ class VideoListTile extends ConsumerWidget {
         );
       },
       onLongPress: () async {
-        final action = await showModalBottomSheet<String>(
-          context: context,
-          builder: (context) => SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.drive_file_rename_outline),
-                  title: const Text('重命名'),
-                  onTap: () => Navigator.pop(context, 'rename'),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.share),
-                  title: const Text('分享 / 导出'),
-                  onTap: () => Navigator.pop(context, 'share'),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.delete_outline, color: Colors.red),
-                  title: const Text('删除', style: TextStyle(color: Colors.red)),
-                  onTap: () => Navigator.pop(context, 'delete'),
-                ),
-              ],
-            ),
-          ),
+        final newName = await showRenameDialog(
+          context,
+          initialName: video.displayName,
         );
-
-        if (!context.mounted || action == null) return;
-
-        switch (action) {
-          case 'rename':
-            final newName = await showRenameDialog(
-              context,
-              initialName: video.displayName,
-            );
-            if (newName != null && newName.trim().isNotEmpty) {
-              await repo.rename(video.id, newName.trim());
-            }
-          case 'share':
-            if (context.mounted) {
-              await VideoPlayerScreen.shareVideo(context, video);
-            }
-          case 'delete':
-            final confirmed = await showDialog<bool>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('确认删除'),
-                content: Text('删除「${video.displayName}」？'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('取消'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('删除'),
-                  ),
-                ],
-              ),
-            );
-            if (confirmed == true) {
-              await VideoPlayerScreen.deleteVideo(video, repo);
-            }
+        if (newName != null && newName.trim().isNotEmpty) {
+          await repo.rename(video.id, newName.trim());
         }
       },
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          OutlinedButton(
+            onPressed: () =>
+                VideoPlayerScreen.revealInFileManager(context, video),
+            child: const Text('目录'),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            onPressed: () => _share(context),
+            child: const Text('分享'),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            onPressed: () => _delete(context, repo),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
     );
   }
 }

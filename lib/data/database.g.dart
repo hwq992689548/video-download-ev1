@@ -1458,12 +1458,274 @@ class DownloadTasksCompanion extends UpdateCompanion<DownloadTask> {
   }
 }
 
+class $RecordedLinksTable extends RecordedLinks
+    with TableInfo<$RecordedLinksTable, RecordedLink> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RecordedLinksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+    'url',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _recordedAtMeta = const VerificationMeta(
+    'recordedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> recordedAt = GeneratedColumn<DateTime>(
+    'recorded_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, url, recordedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'recorded_links';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RecordedLink> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_urlMeta);
+    }
+    if (data.containsKey('recorded_at')) {
+      context.handle(
+        _recordedAtMeta,
+        recordedAt.isAcceptableOrUnknown(data['recorded_at']!, _recordedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_recordedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  RecordedLink map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RecordedLink(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      )!,
+      recordedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}recorded_at'],
+      )!,
+    );
+  }
+
+  @override
+  $RecordedLinksTable createAlias(String alias) {
+    return $RecordedLinksTable(attachedDatabase, alias);
+  }
+}
+
+class RecordedLink extends DataClass implements Insertable<RecordedLink> {
+  final String id;
+  final String url;
+  final DateTime recordedAt;
+  const RecordedLink({
+    required this.id,
+    required this.url,
+    required this.recordedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['url'] = Variable<String>(url);
+    map['recorded_at'] = Variable<DateTime>(recordedAt);
+    return map;
+  }
+
+  RecordedLinksCompanion toCompanion(bool nullToAbsent) {
+    return RecordedLinksCompanion(
+      id: Value(id),
+      url: Value(url),
+      recordedAt: Value(recordedAt),
+    );
+  }
+
+  factory RecordedLink.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RecordedLink(
+      id: serializer.fromJson<String>(json['id']),
+      url: serializer.fromJson<String>(json['url']),
+      recordedAt: serializer.fromJson<DateTime>(json['recordedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'url': serializer.toJson<String>(url),
+      'recordedAt': serializer.toJson<DateTime>(recordedAt),
+    };
+  }
+
+  RecordedLink copyWith({String? id, String? url, DateTime? recordedAt}) =>
+      RecordedLink(
+        id: id ?? this.id,
+        url: url ?? this.url,
+        recordedAt: recordedAt ?? this.recordedAt,
+      );
+  RecordedLink copyWithCompanion(RecordedLinksCompanion data) {
+    return RecordedLink(
+      id: data.id.present ? data.id.value : this.id,
+      url: data.url.present ? data.url.value : this.url,
+      recordedAt: data.recordedAt.present
+          ? data.recordedAt.value
+          : this.recordedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RecordedLink(')
+          ..write('id: $id, ')
+          ..write('url: $url, ')
+          ..write('recordedAt: $recordedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, url, recordedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RecordedLink &&
+          other.id == this.id &&
+          other.url == this.url &&
+          other.recordedAt == this.recordedAt);
+}
+
+class RecordedLinksCompanion extends UpdateCompanion<RecordedLink> {
+  final Value<String> id;
+  final Value<String> url;
+  final Value<DateTime> recordedAt;
+  final Value<int> rowid;
+  const RecordedLinksCompanion({
+    this.id = const Value.absent(),
+    this.url = const Value.absent(),
+    this.recordedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  RecordedLinksCompanion.insert({
+    required String id,
+    required String url,
+    required DateTime recordedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       url = Value(url),
+       recordedAt = Value(recordedAt);
+  static Insertable<RecordedLink> custom({
+    Expression<String>? id,
+    Expression<String>? url,
+    Expression<DateTime>? recordedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (url != null) 'url': url,
+      if (recordedAt != null) 'recorded_at': recordedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  RecordedLinksCompanion copyWith({
+    Value<String>? id,
+    Value<String>? url,
+    Value<DateTime>? recordedAt,
+    Value<int>? rowid,
+  }) {
+    return RecordedLinksCompanion(
+      id: id ?? this.id,
+      url: url ?? this.url,
+      recordedAt: recordedAt ?? this.recordedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (recordedAt.present) {
+      map['recorded_at'] = Variable<DateTime>(recordedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RecordedLinksCompanion(')
+          ..write('id: $id, ')
+          ..write('url: $url, ')
+          ..write('recordedAt: $recordedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $VideoRecordsTable videoRecords = $VideoRecordsTable(this);
   late final $BookmarksTable bookmarks = $BookmarksTable(this);
   late final $DownloadTasksTable downloadTasks = $DownloadTasksTable(this);
+  late final $RecordedLinksTable recordedLinks = $RecordedLinksTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1472,6 +1734,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     videoRecords,
     bookmarks,
     downloadTasks,
+    recordedLinks,
   ];
 }
 
@@ -2243,6 +2506,179 @@ typedef $$DownloadTasksTableProcessedTableManager =
       DownloadTask,
       PrefetchHooks Function()
     >;
+typedef $$RecordedLinksTableCreateCompanionBuilder =
+    RecordedLinksCompanion Function({
+      required String id,
+      required String url,
+      required DateTime recordedAt,
+      Value<int> rowid,
+    });
+typedef $$RecordedLinksTableUpdateCompanionBuilder =
+    RecordedLinksCompanion Function({
+      Value<String> id,
+      Value<String> url,
+      Value<DateTime> recordedAt,
+      Value<int> rowid,
+    });
+
+class $$RecordedLinksTableFilterComposer
+    extends Composer<_$AppDatabase, $RecordedLinksTable> {
+  $$RecordedLinksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get recordedAt => $composableBuilder(
+    column: $table.recordedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RecordedLinksTableOrderingComposer
+    extends Composer<_$AppDatabase, $RecordedLinksTable> {
+  $$RecordedLinksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get recordedAt => $composableBuilder(
+    column: $table.recordedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RecordedLinksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $RecordedLinksTable> {
+  $$RecordedLinksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get recordedAt => $composableBuilder(
+    column: $table.recordedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$RecordedLinksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $RecordedLinksTable,
+          RecordedLink,
+          $$RecordedLinksTableFilterComposer,
+          $$RecordedLinksTableOrderingComposer,
+          $$RecordedLinksTableAnnotationComposer,
+          $$RecordedLinksTableCreateCompanionBuilder,
+          $$RecordedLinksTableUpdateCompanionBuilder,
+          (
+            RecordedLink,
+            BaseReferences<_$AppDatabase, $RecordedLinksTable, RecordedLink>,
+          ),
+          RecordedLink,
+          PrefetchHooks Function()
+        > {
+  $$RecordedLinksTableTableManager(_$AppDatabase db, $RecordedLinksTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RecordedLinksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RecordedLinksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RecordedLinksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> url = const Value.absent(),
+                Value<DateTime> recordedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RecordedLinksCompanion(
+                id: id,
+                url: url,
+                recordedAt: recordedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String url,
+                required DateTime recordedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => RecordedLinksCompanion.insert(
+                id: id,
+                url: url,
+                recordedAt: recordedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$RecordedLinksTable, RecordedLink>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $RecordedLinksTable,
+                    RecordedLink
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RecordedLinksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $RecordedLinksTable,
+      RecordedLink,
+      $$RecordedLinksTableFilterComposer,
+      $$RecordedLinksTableOrderingComposer,
+      $$RecordedLinksTableAnnotationComposer,
+      $$RecordedLinksTableCreateCompanionBuilder,
+      $$RecordedLinksTableUpdateCompanionBuilder,
+      (
+        RecordedLink,
+        BaseReferences<_$AppDatabase, $RecordedLinksTable, RecordedLink>,
+      ),
+      RecordedLink,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2253,4 +2689,6 @@ class $AppDatabaseManager {
       $$BookmarksTableTableManager(_db, _db.bookmarks);
   $$DownloadTasksTableTableManager get downloadTasks =>
       $$DownloadTasksTableTableManager(_db, _db.downloadTasks);
+  $$RecordedLinksTableTableManager get recordedLinks =>
+      $$RecordedLinksTableTableManager(_db, _db.recordedLinks);
 }

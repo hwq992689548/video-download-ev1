@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/database.dart';
 import '../data/repositories/repositories.dart';
 import 'download_manager.dart';
-import 'ev1_converter.dart';
+import 'baijiayun_converter.dart';
 import 'sniff_registry.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) {
@@ -21,13 +21,18 @@ final bookmarkRepositoryProvider = Provider<BookmarkRepository>((ref) {
   return BookmarkRepository(ref.watch(databaseProvider));
 });
 
+final recordedLinkRepositoryProvider = Provider<RecordedLinkRepository>((ref) {
+  return RecordedLinkRepository(ref.watch(databaseProvider));
+});
+
 final sniffRegistryProvider = ChangeNotifierProvider<SniffRegistry>((ref) {
   return SniffRegistry();
 });
 
 final dioProvider = Provider<Dio>((ref) => Dio());
 
-final ev1ConverterProvider = Provider<Ev1Converter>((ref) => Ev1Converter());
+final baijiayunConverterProvider =
+    Provider<BaijiayunConverter>((ref) => BaijiayunConverter());
 
 final downloadTaskRepositoryProvider = Provider<DownloadTaskRepository>((ref) {
   return DownloadTaskRepository(ref.watch(databaseProvider));
@@ -36,7 +41,7 @@ final downloadTaskRepositoryProvider = Provider<DownloadTaskRepository>((ref) {
 final downloadManagerProvider = FutureProvider<DownloadManager>((ref) async {
   return createDownloadManager(
     dio: ref.watch(dioProvider),
-    converter: ref.watch(ev1ConverterProvider),
+    converter: ref.watch(baijiayunConverterProvider),
     videos: ref.watch(videoRepositoryProvider),
     tasks: ref.watch(downloadTaskRepositoryProvider),
   );
@@ -44,4 +49,8 @@ final downloadManagerProvider = FutureProvider<DownloadManager>((ref) async {
 
 final allVideosStreamProvider = StreamProvider<List<VideoRecord>>((ref) {
   return ref.watch(videoRepositoryProvider).watchAll();
+});
+
+final recordedLinksStreamProvider = StreamProvider<List<RecordedLink>>((ref) {
+  return ref.watch(recordedLinkRepositoryProvider).watchAll();
 });
