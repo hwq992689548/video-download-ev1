@@ -33,7 +33,10 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 add_definitions(-DUNICODE -D_UNICODE)
 
 # flutter_inappwebview_windows + VS 2026: silence deprecated experimental coroutine headers.
-add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+if(MSVC)
+  add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS")
+endif()
 
 # Compilation settings that should be applied to most targets.
 #
@@ -45,6 +48,7 @@ function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100")
   target_compile_options(${TARGET} PRIVATE /EHsc)
   target_compile_definitions(${TARGET} PRIVATE "_HAS_EXCEPTIONS=0")
+  target_compile_definitions(${TARGET} PRIVATE "_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS")
   target_compile_definitions(${TARGET} PRIVATE "$<$<CONFIG:Debug>:_DEBUG>")
 endfunction()
 
@@ -59,6 +63,17 @@ add_subdirectory("runner")
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
 include(flutter/generated_plugins.cmake)
+
+# Plugin CMake projects call project() again, so directory-level flags above
+# do not propagate. Apply the coroutine workaround directly on plugin targets.
+if(MSVC)
+  foreach(plugin ${FLUTTER_PLUGIN_LIST})
+    set(_plugin_target "${plugin}_plugin")
+    if(TARGET ${_plugin_target})
+      target_compile_definitions(${_plugin_target} PRIVATE _SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+    endif()
+  endforeach()
+endif()
 
 
 # === Installation ===

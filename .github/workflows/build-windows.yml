@@ -48,6 +48,8 @@ jobs:
 
       - name: Build Windows release
         shell: pwsh
+        env:
+          CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
         run: |
           flutter build windows --release -v 2>&1 | Tee-Object -FilePath build.log
           if ($LASTEXITCODE -ne 0) {
