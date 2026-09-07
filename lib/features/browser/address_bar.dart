@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'mobile_browser_config.dart';
 
+const _defaultUrl = 'https://www.beegoedu.com/';
+
 class AddressBar extends StatefulWidget {
   const AddressBar({
     super.key,
@@ -58,8 +60,9 @@ class _AddressBarState extends State<AddressBar> {
 
   void _submit() {
     var text = _controller.text.trim();
-    if (text.isEmpty) return;
-    if (!text.startsWith('http://') && !text.startsWith('https://')) {
+    if (text.isEmpty) {
+      text = _defaultUrl;
+    } else if (!text.startsWith('http://') && !text.startsWith('https://')) {
       text = 'https://$text';
     }
     widget.onSubmit(text);
@@ -87,7 +90,10 @@ class _AddressBarState extends State<AddressBar> {
       keyboardType: TextInputType.url,
       autocorrect: false,
       decoration: InputDecoration(
-        hintText: '输入网址',
+        hintText: _defaultUrl,
+        hintStyle: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
+        ),
         isDense: true,
         filled: true,
         fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
