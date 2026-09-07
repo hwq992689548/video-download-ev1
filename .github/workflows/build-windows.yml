@@ -18,11 +18,27 @@ jobs:
       - name: Setup NuGet
         uses: nuget/setup-nuget@v2
 
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install 7-Zip
+        shell: pwsh
+        run: choco install 7zip -y
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+
+      - name: Verify toolchain
+        shell: pwsh
+        run: |
+          nuget help | Select-Object -First 1
+          flutter --version
+          flutter doctor -v
 
       - name: Install dependencies
         run: flutter pub get
@@ -31,7 +47,22 @@ jobs:
         run: flutter test test/core
 
       - name: Build Windows release
-        run: flutter build windows --release
+        shell: pwsh
+        run: |
+          flutter build windows --release -v 2>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) {
+            "## Build failed" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+            Get-Content build.log -Tail 120 | Out-File $env:GITHUB_STEP_SUMMARY -Append
+            exit $LASTEXITCODE
+          }
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.run_number }}
+          path: build.log
+          if-no-files-found: ignore
 
       - name: Zip release bundle
         shell: pwsh
