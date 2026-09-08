@@ -25,6 +25,13 @@ dependencies:
   media_kit_libs_video: ^1.0.5
   intl: ^0.19.0
 
+# sqlite3 3.x 默认从 GitHub 拉预编译库；国内网络常超时。
+# 改用 sqlite3_flutter_libs 已链进进程的 SQLite。
+hooks:
+  user_defines:
+    sqlite3:
+      source: process
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -34,6 +41,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # flutter_inappwebview / media_kit 不支持 SwiftPM，否则 iOS 会报
+  # Module 'flutter_inappwebview_ios' not found。
+  config:
+    enable-swift-package-manager: false
   assets:
     - assets/injected_sniff.js
     - assets/ev2-decrypt.wasm
