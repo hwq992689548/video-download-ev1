@@ -3,10 +3,10 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import 'baijiayun_converter.dart';
+import 'download_paths.dart';
 import 'resumable_download.dart';
 import '../data/database.dart';
 import '../data/repositories/repositories.dart';
@@ -677,15 +677,14 @@ Future<DownloadManager> createDownloadManager({
   required VideoRepository videos,
   required DownloadTaskRepository tasks,
 }) async {
-  final docDir = await getApplicationDocumentsDirectory();
-  final tempDir = await getTemporaryDirectory();
+  final paths = await resolveDownloadStoragePaths();
   final manager = DownloadManager(
     dio: dio,
     converter: converter,
     videos: videos,
     tasks: tasks,
-    videosDir: Directory(p.join(docDir.path, 'videos')),
-    tempDir: Directory(p.join(tempDir.path, 'downloads')),
+    videosDir: paths.videosDir,
+    tempDir: paths.tempDir,
   );
   await manager.restorePending();
   return manager;

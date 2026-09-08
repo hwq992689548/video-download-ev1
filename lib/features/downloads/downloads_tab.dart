@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
+import '../../core/download_paths.dart';
 import '../../core/providers.dart';
 import '../../core/reveal_in_file_manager.dart';
 import '../../data/database.dart';
@@ -32,9 +31,8 @@ class _DownloadsTabState extends ConsumerState<DownloadsTab> {
   }
 
   Future<void> _openDownloadDirectory() async {
-    final docDir = await getApplicationDocumentsDirectory();
-    final videosDir = p.join(docDir.path, 'videos');
-    final ok = await RevealInFileManager.openDirectory(videosDir);
+    final paths = await resolveDownloadStoragePaths();
+    final ok = await RevealInFileManager.openDirectory(paths.videosDir.path);
     if (!mounted) return;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(

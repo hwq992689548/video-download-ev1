@@ -31,6 +31,16 @@ flutter build windows --release
 
 推送到 GitHub 后，`.github/workflows/build-windows.yml` 会在云端自动打 Windows 包，在 Actions → Artifacts 下载 `video_download_ev1-windows-x64.zip`。
 
+### 修改 Windows 下载路径（不用重新打包）
+
+解压后，和 `video_download_ev1.exe` 同目录有一个 `download_path.txt`。用记事本打开，改成你想保存视频的文件夹（建议 D 盘），保存后**重启软件**：
+
+```
+D:\EV1Downloads
+```
+
+视频会写到该目录下的 `videos\`，下载临时文件写到 `tmp\`。不改或路径无效时，仍使用系统文档目录和 C 盘 Temp。
+
 ## EV1 转换
 
 百家云 `.ev1` 文件：对前 100 字节做 `XOR 0xFF`，其余原样保留，输出标准 FLV。
