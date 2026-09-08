@@ -8,6 +8,7 @@ import '../../core/providers.dart';
 import '../../core/reveal_in_file_manager.dart';
 import '../../data/database.dart';
 import '../../data/repositories/repositories.dart';
+import '../../theme/app_theme.dart';
 import '../test/recorded_links_page.dart';
 import '../test/test_download_page.dart';
 import 'rename_dialog.dart';
@@ -42,6 +43,10 @@ class _DownloadsTabState extends ConsumerState<DownloadsTab> {
     }
   }
 
+  void _openPage(Widget page) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+  }
+
   @override
   Widget build(BuildContext context) {
     final repo = ref.watch(videoRepositoryProvider);
@@ -51,123 +56,132 @@ class _DownloadsTabState extends ConsumerState<DownloadsTab> {
         _query.isEmpty ? repo.watchAll() : repo.search(_query);
     final pendingStream = taskRepo.watchPending();
 
-    return SafeArea(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '视频列表',
-                    style: Theme.of(context).textTheme.headlineSmall,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ColoredBox(
+          color: AppColors.surface,
+          child: SafeArea(
+            bottom: false,
+            child: SizedBox(
+              height: kToolbarHeight,
+              child: Row(
+                children: [
+                  const SizedBox(width: 48),
+                  Expanded(
+                    child: Text(
+                      '视频列表',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).appBarTheme.titleTextStyle,
+                    ),
                   ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const RecordedLinksPage(),
-                      ),
-                    );
-                  },
-                  child: const Text('链接记录'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const TestDownloadPage(),
-                      ),
-                    );
-                  },
-                  child: const Text('下载测试'),
-                ),
-                TextButton(
-                  onPressed: _openDownloadDirectory,
-                  child: const Text('下载目录'),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: SearchBar(
-              controller: _searchController,
-              hintText: '搜索视频名称',
-              leading: const Icon(Icons.search),
-              onChanged: (value) => setState(() => _query = value),
-              trailing: _query.isEmpty
-                  ? null
-                  : [
-                      IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _query = '');
-                        },
-                      ),
+                  PopupMenuButton<String>(
+                    tooltip: '更多',
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'links':
+                          _openPage(const RecordedLinksPage());
+                        case 'test':
+                          _openPage(const TestDownloadPage());
+                        case 'folder':
+                          _openDownloadDirectory();
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(value: 'links', child: Text('链接记录')),
+                      PopupMenuItem(value: 'test', child: Text('下载测试')),
+                      PopupMenuItem(value: 'folder', child: Text('下载目录')),
                     ],
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: StreamBuilder<List<DownloadTask>>(
-              stream: pendingStream,
-              builder: (context, pendingSnapshot) {
-                final pending = pendingSnapshot.data ?? [];
-                return StreamBuilder<List<VideoRecord>>(
-                  stream: videosStream,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting &&
-                        pendingSnapshot.connectionState ==
-                            ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final videos = snapshot.data ?? [];
-                    if (pending.isEmpty && videos.isEmpty) {
-                      return Center(
-                        child: Text(
-                          _query.isEmpty
-                              ? '暂无视频，去浏览器 Tab 嗅探 .ev1 链接'
-                              : '没有匹配的视频',
-                          style: Theme.of(context).textTheme.bodyLarge,
-                        ),
-                      );
-                    }
-                    return ListView.separated(
-                      itemCount: pending.length + videos.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        if (index < pending.length) {
-                          final task = pending[index];
-                          return PendingDownloadTile(
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: TextField(
+            controller: _searchController,
+            onChanged: (value) => setState(() => _query = value),
+            decoration: InputDecoration(
+              hintText: '搜索视频名称',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _query = '');
+                      },
+                    ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<List<DownloadTask>>(
+            stream: pendingStream,
+            builder: (context, pendingSnapshot) {
+              final pending = pendingSnapshot.data ?? [];
+              return StreamBuilder<List<VideoRecord>>(
+                stream: videosStream,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      pendingSnapshot.connectionState ==
+                          ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final videos = snapshot.data ?? [];
+                  if (pending.isEmpty && videos.isEmpty) {
+                    return Center(
+                      child: Text(
+                        _query.isEmpty
+                            ? '暂无视频，去浏览器 Tab 嗅探 .ev1 链接'
+                            : '没有匹配的视频',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                        textAlign: TextAlign.center,
+                      ),
+                    );
+                  }
+                  return ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    itemCount: pending.length + videos.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      if (index < pending.length) {
+                        final task = pending[index];
+                        return AppGroup(
+                          margin: EdgeInsets.zero,
+                          child: PendingDownloadTile(
                             task: task,
                             onRetry: managerAsync.value == null
                                 ? null
                                 : () => managerAsync.value!.retry(task.id),
                             onRetryConvert: managerAsync.value == null
                                 ? null
-                                : () =>
-                                    managerAsync.value!.retryConvert(task.id),
+                                : () => managerAsync.value!
+                                    .retryConvert(task.id),
                             onCancel: managerAsync.value == null
                                 ? null
                                 : () => managerAsync.value!.cancel(task.id),
-                          );
-                        }
-                        final video = videos[index - pending.length];
-                        return VideoListTile(video: video);
-                      },
-                    );
-                  },
-                );
-              },
-            ),
+                          ),
+                        );
+                      }
+                      final video = videos[index - pending.length];
+                      return AppGroup(
+                        margin: EdgeInsets.zero,
+                        child: VideoListTile(video: video),
+                      );
+                    },
+                  );
+                },
+              );
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -232,6 +246,12 @@ class PendingDownloadTile extends StatelessWidget {
     return segment.replaceAll(RegExp(r'\.ev[12]$', caseSensitive: false), '');
   }
 
+  Color get _accent {
+    if (_isConvertFailed) return AppColors.warning;
+    if (_isDownloadFailed) return AppColors.error;
+    return AppColors.tip;
+  }
+
   @override
   Widget build(BuildContext context) {
     final progress = _progress();
@@ -243,31 +263,41 @@ class PendingDownloadTile extends StatelessWidget {
     final isFailed = _isDownloadFailed || _isConvertFailed;
 
     return ListTile(
+      contentPadding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
       leading: CircleAvatar(
-        backgroundColor: isFailed
-            ? (_isConvertFailed ? Colors.orange.shade100 : Colors.red.shade100)
-            : Colors.blue.shade100,
+        backgroundColor: _accent.withValues(alpha: 0.12),
         child: Icon(
           isFailed ? Icons.error_outline : Icons.downloading,
-          color: isFailed
-              ? (_isConvertFailed ? Colors.orange : Colors.red)
-              : Colors.blue,
+          color: _accent,
         ),
       ),
-      title: Text(_title(), maxLines: 1, overflow: TextOverflow.ellipsis),
+      title: Text(
+        _title(),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const SizedBox(height: 4),
           Text(
             isFailed && task.error != null
                 ? '${_statusLabel()} · ${task.error}'
                 : _statusLabel(),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
           ),
           if (showProgress) ...[
-            const SizedBox(height: 6),
-            LinearProgressIndicator(value: progress > 0 ? progress : null),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: progress > 0 ? progress : null,
+                minHeight: 3,
+              ),
+            ),
             if (task.status == 'downloading' &&
                 task.totalBytes != null &&
                 task.totalBytes! > 0)
@@ -296,26 +326,24 @@ class PendingDownloadTile extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (_isConvertFailed && _isDownloadComplete)
-            FilledButton.tonal(
+            FilledButton(
               onPressed: onRetryConvert,
               child: const Text('重新转换'),
             ),
           if (_isConvertFailed && !_isDownloadComplete)
-            FilledButton.tonal(
+            FilledButton(
               onPressed: onRetry,
               child: const Text('继续下载'),
             ),
           if (_isDownloadFailed)
-            FilledButton.tonal(
+            FilledButton(
               onPressed: onRetry,
               child: const Text('继续'),
             ),
           if (isFailed) const SizedBox(width: 8),
           OutlinedButton(
             onPressed: onCancel,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.error,
-            ),
+            style: OutlinedButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('取消'),
           ),
         ],
@@ -364,18 +392,37 @@ class VideoListTile extends ConsumerWidget {
     }
   }
 
+  Future<void> _rename(BuildContext context, VideoRepository repo) async {
+    final newName = await showRenameDialog(
+      context,
+      initialName: video.displayName,
+    );
+    if (newName != null && newName.trim().isNotEmpty) {
+      await repo.rename(video.id, newName.trim());
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.watch(videoRepositoryProvider);
     final date = DateFormat('yyyy-MM-dd HH:mm').format(video.downloadedAt);
 
     return ListTile(
+      contentPadding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
       leading: CircleAvatar(
-        backgroundColor: Colors.green.shade100,
-        child: Icon(Icons.movie, color: Colors.green.shade700),
+        backgroundColor: AppColors.success.withValues(alpha: 0.12),
+        child: const Icon(Icons.movie, color: AppColors.success),
       ),
-      title: Text(video.displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text('下载成功 · ${_formatSize(video.fileSizeBytes)} · $date'),
+      title: Text(
+        video.displayName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      subtitle: Text(
+        '下载成功 · ${_formatSize(video.fileSizeBytes)} · $date',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -383,36 +430,26 @@ class VideoListTile extends ConsumerWidget {
           ),
         );
       },
-      onLongPress: () async {
-        final newName = await showRenameDialog(
-          context,
-          initialName: video.displayName,
-        );
-        if (newName != null && newName.trim().isNotEmpty) {
-          await repo.rename(video.id, newName.trim());
-        }
-      },
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          OutlinedButton(
-            onPressed: () =>
-                VideoPlayerScreen.revealInFileManager(context, video),
-            child: const Text('目录'),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton(
-            onPressed: () => _share(context),
-            child: const Text('分享'),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton(
-            onPressed: () => _delete(context, repo),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: const Text('删除'),
-          ),
+      onLongPress: () => _rename(context, repo),
+      trailing: PopupMenuButton<String>(
+        tooltip: '操作',
+        onSelected: (value) {
+          switch (value) {
+            case 'folder':
+              VideoPlayerScreen.revealInFileManager(context, video);
+            case 'share':
+              _share(context);
+            case 'rename':
+              _rename(context, repo);
+            case 'delete':
+              _delete(context, repo);
+          }
+        },
+        itemBuilder: (context) => const [
+          PopupMenuItem(value: 'folder', child: Text('目录')),
+          PopupMenuItem(value: 'share', child: Text('分享')),
+          PopupMenuItem(value: 'rename', child: Text('重命名')),
+          PopupMenuItem(value: 'delete', child: Text('删除')),
         ],
       ),
     );

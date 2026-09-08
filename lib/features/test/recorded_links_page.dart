@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/download_manager.dart';
 import '../../core/providers.dart';
 import '../../data/database.dart';
+import '../../theme/app_theme.dart';
 
 class RecordedLinksPage extends ConsumerWidget {
   const RecordedLinksPage({super.key});
@@ -48,15 +49,19 @@ class RecordedLinksPage extends ConsumerWidget {
                 child: Text(
                   '暂无记录。\n在浏览器「嗅探到的 .ev1 资源」列表中点「记录」保存链接。',
                   textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textSecondary),
                 ),
               ),
             );
           }
           return ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             itemCount: links.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, index) => _RecordedLinkTile(link: links[index]),
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
+            itemBuilder: (context, index) => AppGroup(
+              margin: EdgeInsets.zero,
+              child: _RecordedLinkTile(link: links[index]),
+            ),
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),

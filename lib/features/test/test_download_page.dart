@@ -6,6 +6,7 @@ import '../../core/download_manager.dart';
 import '../../core/providers.dart';
 import '../../core/sniff_registry.dart';
 import '../../data/database.dart';
+import '../../theme/app_theme.dart';
 import '../downloads/video_player_screen.dart';
 
 /// Fixed tab id for the test page sniff registry bucket.
@@ -186,14 +187,13 @@ class _TestDownloadPageState extends ConsumerState<TestDownloadPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            AppGroup(
+              padding: const EdgeInsets.all(12),
               child: TextField(
                 controller: _urlController,
                 maxLines: 3,
                 decoration: const InputDecoration(
                   labelText: '.ev1 / .ev2 链接',
-                  border: OutlineInputBorder(),
                   hintText: '粘贴猫抓嗅探到的链接',
                 ),
               ),
@@ -340,7 +340,7 @@ class _TestSniffTile extends StatelessWidget {
     } else {
       switch (entry.status) {
         case SniffStatus.done:
-          trailing = const Icon(Icons.check_circle, color: Colors.green);
+          trailing = const Icon(Icons.check_circle, color: AppColors.success);
         case SniffStatus.downloading:
           trailing = SizedBox(
             width: 28,
@@ -378,7 +378,7 @@ class _TestSniffTile extends StatelessWidget {
           SniffStatus.failed => Icons.error_outline,
           _ => Icons.link,
         },
-        color: existing != null ? Colors.green : null,
+        color: existing != null ? AppColors.success : AppColors.textSecondary,
       ),
       title: Text(
         entry.url,

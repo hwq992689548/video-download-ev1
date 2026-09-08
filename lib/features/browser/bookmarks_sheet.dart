@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/providers.dart';
 import '../../data/database.dart';
+import '../../theme/app_theme.dart';
 
 class BookmarksSheet extends ConsumerWidget {
   const BookmarksSheet({
@@ -31,7 +32,10 @@ class BookmarksSheet extends ConsumerWidget {
         return Column(
           children: [
             ListTile(
-              title: const Text('书签'),
+              title: Text(
+                '书签',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               trailing: FilledButton.icon(
                 icon: const Icon(Icons.add),
                 label: const Text('添加当前页'),
@@ -60,7 +64,14 @@ class BookmarksSheet extends ConsumerWidget {
                 builder: (context, snapshot) {
                   final bookmarks = snapshot.data ?? [];
                   if (bookmarks.isEmpty) {
-                    return const Center(child: Text('暂无书签'));
+                    return Center(
+                      child: Text(
+                        '暂无书签',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                      ),
+                    );
                   }
                   return ListView.builder(
                     controller: scrollController,

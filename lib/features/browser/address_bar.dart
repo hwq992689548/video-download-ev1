@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/app_theme.dart';
 import 'mobile_browser_config.dart';
 
 const _defaultUrl = 'https://www.beegoedu.com/';
@@ -91,15 +92,20 @@ class _AddressBarState extends State<AddressBar> {
       autocorrect: false,
       decoration: InputDecoration(
         hintText: _defaultUrl,
-        hintStyle: TextStyle(
-          color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
-        ),
         isDense: true,
         filled: true,
-        fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+        fillColor: AppColors.fillRegular,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(compact ? 20 : 8),
+          borderRadius: BorderRadius.circular(compact ? AppRadii.pill : AppRadii.field),
           borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(compact ? AppRadii.pill : AppRadii.field),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(compact ? AppRadii.pill : AppRadii.field),
+          borderSide: const BorderSide(color: AppColors.theme),
         ),
         contentPadding: EdgeInsets.symmetric(
           horizontal: compact ? 14 : 12,
@@ -111,7 +117,7 @@ class _AddressBarState extends State<AddressBar> {
   }
 
   Widget _sniffButton({bool compact = false}) {
-    final button = FilledButton.tonal(
+    final button = FilledButton(
       onPressed: widget.onSniff,
       style: FilledButton.styleFrom(
         padding: EdgeInsets.symmetric(
@@ -123,12 +129,13 @@ class _AddressBarState extends State<AddressBar> {
       ),
       child: Text(
         '探测链接',
-        style: TextStyle(fontSize: compact ? 12 : 14),
+        style: TextStyle(fontSize: compact ? 12 : 14, fontWeight: FontWeight.w500),
       ),
     );
 
     return Badge(
       isLabelVisible: widget.sniffCount > 0,
+      backgroundColor: AppColors.error,
       label: Text('${widget.sniffCount}'),
       child: button,
     );
@@ -138,9 +145,12 @@ class _AddressBarState extends State<AddressBar> {
   Widget build(BuildContext context) {
     final compact = shouldUseMobileBrowserMode(context);
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(compact ? 4 : 8, 8, compact ? 4 : 8, 4),
-      child: compact ? _buildCompactLayout() : _buildDesktopLayout(),
+    return ColoredBox(
+      color: AppColors.surface,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(compact ? 4 : 8, 8, compact ? 4 : 8, 8),
+        child: compact ? _buildCompactLayout() : _buildDesktopLayout(),
+      ),
     );
   }
 
@@ -163,35 +173,18 @@ class _AddressBarState extends State<AddressBar> {
           onPressed: widget.onRefresh,
         ),
         Expanded(child: _urlField(compact: true)),
-        _sniffButton(compact: true),
-        PopupMenuButton<String>(
-          tooltip: '更多',
-          itemBuilder: (context) => [
-            const PopupMenuItem(
-              value: 'bookmarks',
-              child: ListTile(
-                leading: Icon(Icons.bookmarks_outlined),
-                title: Text('书签'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'go',
-              child: ListTile(
-                leading: Icon(Icons.arrow_forward),
-                title: Text('前往'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-          ],
-          onSelected: (value) {
-            switch (value) {
-              case 'bookmarks':
-                widget.onBookmarks();
-              case 'go':
-                _submit();
-            }
-          },
+        const SizedBox(width: 6),
+        FilledButton(
+          onPressed: _submit,
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: const Text(
+            '前往',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+          ),
         ),
       ],
     );

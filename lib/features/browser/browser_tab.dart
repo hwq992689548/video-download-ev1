@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
 import '../../core/sniff_registry.dart';
+import '../../theme/app_theme.dart';
 import 'address_bar.dart';
 import 'bookmarks_sheet.dart';
 import 'browser_tab_bar.dart';
@@ -47,10 +48,21 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
       return videoRepo.findByEv1UrlIn(videos, e.url) == null;
     }).length;
 
-    return SafeArea(
+    return ColoredBox(
+      color: AppColors.background,
       child: Column(
         children: [
-          const BrowserTabBar(),
+          ColoredBox(
+            color: AppColors.surface,
+            child: SafeArea(
+              bottom: false,
+              child: BrowserTabBar(
+                sniffCount: sniffCount,
+                onSniff: () =>
+                    setState(() => _showSniffPanel = !_showSniffPanel),
+              ),
+            ),
+          ),
           AddressBar(
             currentUrl: activeTab.url == 'about:blank' ? '' : activeTab.url,
             canGoBack: webView?.canGoBack ?? false,
@@ -71,6 +83,7 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
             ),
             onSniff: () => setState(() => _showSniffPanel = !_showSniffPanel),
           ),
+          const Divider(height: 1),
           Expanded(
             child: Stack(
               children: [

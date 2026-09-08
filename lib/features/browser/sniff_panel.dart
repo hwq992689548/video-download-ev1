@@ -5,6 +5,7 @@ import '../../core/download_manager.dart';
 import '../../core/providers.dart';
 import '../../core/sniff_registry.dart';
 import '../../data/database.dart';
+import '../../theme/app_theme.dart';
 import '../downloads/video_player_screen.dart';
 import 'mobile_browser_config.dart';
 import '../test/recorded_links_page.dart';
@@ -25,7 +26,9 @@ class SniffPanel extends ConsumerWidget {
         : 360.0;
 
     return Material(
+      color: AppColors.surface,
       elevation: 8,
+      shadowColor: AppColors.mask,
       child: SafeArea(
         top: false,
         child: SizedBox(
@@ -33,7 +36,10 @@ class SniffPanel extends ConsumerWidget {
           child: Column(
             children: [
               ListTile(
-                title: const Text('嗅探到的视频资源'),
+                title: Text(
+                  '嗅探到的视频资源',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -114,7 +120,7 @@ class _SniffTile extends ConsumerWidget {
         child: const Text('播放'),
       );
     } else if (entry.status == SniffStatus.done) {
-      trailing = const Icon(Icons.check_circle, color: Colors.green);
+      trailing = const Icon(Icons.check_circle, color: AppColors.success);
     } else if (entry.status == SniffStatus.downloading) {
       trailing = SizedBox(
         width: 24,
@@ -163,7 +169,7 @@ class _SniffTile extends ConsumerWidget {
     return ListTile(
       leading: Icon(
         existing != null ? Icons.check_circle_outline : Icons.link,
-        color: existing != null ? Colors.green : null,
+        color: existing != null ? AppColors.success : AppColors.textSecondary,
       ),
       title: Text(
         displayName,

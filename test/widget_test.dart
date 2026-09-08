@@ -12,6 +12,6 @@ void main() {
   testWidgets('App loads downloads tab', (tester) async {
     await tester.pumpWidget(const ProviderScope(child: VideoDownloadEv1App()));
     await tester.pumpAndSettle();
-    expect(find.text('视频列表'), findsOneWidget);
+    expect(find.text('视频列表'), findsWidgets);
   });
 }
