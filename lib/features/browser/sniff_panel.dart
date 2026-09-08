@@ -7,6 +7,7 @@ import '../../core/sniff_registry.dart';
 import '../../data/database.dart';
 import '../../theme/app_theme.dart';
 import '../downloads/video_player_screen.dart';
+import 'download_name_dialog.dart';
 import 'mobile_browser_config.dart';
 import '../test/recorded_links_page.dart';
 
@@ -201,11 +202,19 @@ class _SniffTile extends ConsumerWidget {
     SniffRegistry registry,
     DownloadManager manager,
   ) async {
+    final defaultName = SniffRegistry.displayTitle(entry);
+    final fileName = await showDownloadNameDialog(
+      context,
+      defaultName: defaultName,
+    );
+    if (fileName == null) return;
+    if (!context.mounted) return;
+
     await ensureEv1LinkRecorded(ref, entry.url);
     registry.updateEntry(tabId, entry.url, status: SniffStatus.downloading);
     await manager.enqueue(
       entry.url,
-      suggestedName: entry.title,
+      suggestedName: fileName,
       onUpdate: (state) {
         switch (state.status) {
           case DownloadJobStatus.downloading:
