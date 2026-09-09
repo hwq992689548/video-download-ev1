@@ -49,33 +49,33 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
 
     return ColoredBox(
       color: AppColors.background,
-      child: Column(
+      child: Stack(
         children: [
-          ColoredBox(
-            color: AppColors.surface,
-            child: SafeArea(
-              bottom: false,
-              child: BrowserTabBar(
-                sniffCount: sniffCount,
-                onSniff: () =>
-                    setState(() => _showSniffPanel = !_showSniffPanel),
+          Column(
+            children: [
+              ColoredBox(
+                color: AppColors.surface,
+                child: SafeArea(
+                  bottom: false,
+                  child: BrowserTabBar(
+                    sniffCount: sniffCount,
+                    onSniff: () =>
+                        setState(() => _showSniffPanel = !_showSniffPanel),
+                  ),
+                ),
               ),
-            ),
-          ),
-          AddressBar(
-            currentUrl: activeTab.url == 'about:blank' ? '' : activeTab.url,
-            canGoBack: webView?.canGoBack ?? false,
-            canGoForward: webView?.canGoForward ?? false,
-            onBack: () => webView?.goBack(),
-            onForward: () => webView?.goForward(),
-            onRefresh: () => webView?.reload(),
-            onSubmit: _navigate,
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: Stack(
-              children: [
-                IndexedStack(
+              AddressBar(
+                currentUrl: activeTab.url == 'about:blank' ? '' : activeTab.url,
+                canGoBack: webView?.canGoBack ?? false,
+                canGoForward: webView?.canGoForward ?? false,
+                onBack: () => webView?.goBack(),
+                onForward: () => webView?.goForward(),
+                onRefresh: () => webView?.reload(),
+                onSubmit: _navigate,
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: IndexedStack(
                   index: store.activeIndex,
                   children: [
                     for (final tab in store.tabs)
@@ -94,7 +94,20 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                       ),
                   ],
                 ),
-                if (_showSniffPanel)
+              ),
+            ],
+          ),
+          if (_showSniffPanel)
+            Positioned.fill(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => setState(() => _showSniffPanel = false),
+                      child: const ColoredBox(color: AppColors.mask),
+                    ),
+                  ),
                   Align(
                     alignment: Alignment.bottomCenter,
                     child: SniffPanel(
@@ -102,9 +115,9 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                       onClose: () => setState(() => _showSniffPanel = false),
                     ),
                   ),
-              ],
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );

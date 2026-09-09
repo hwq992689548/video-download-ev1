@@ -30,45 +30,50 @@ class BrowserTabBar extends ConsumerWidget {
       child: Row(
         children: [
           Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(right: showSniff ? 12 : 0),
-              child: ClipRect(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      for (var index = 0; index < tabs.length; index++)
-                        _TabChip(
-                          tab: tabs[index],
-                          compact: compact,
-                          selected: index == store.activeIndex,
-                          onPressed: () => ref
-                              .read(browserTabStoreProvider.notifier)
-                              .selectTab(index),
-                          onDeleted: tabs.length > 1
-                              ? () => ref
-                                  .read(browserTabStoreProvider.notifier)
-                                  .closeTab(index)
-                              : null,
-                        ),
-                      IconButton(
-                        tooltip: '新标签页',
-                        icon: const Icon(Icons.add),
-                        visualDensity: compact
-                            ? VisualDensity.compact
-                            : VisualDensity.standard,
-                        onPressed: () =>
-                            ref.read(browserTabStoreProvider.notifier).addTab(),
+            child: ClipRect(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (var index = 0; index < tabs.length; index++)
+                      _TabChip(
+                        tab: tabs[index],
+                        compact: compact,
+                        selected: index == store.activeIndex,
+                        onPressed: () => ref
+                            .read(browserTabStoreProvider.notifier)
+                            .selectTab(index),
+                        onDeleted: tabs.length > 1
+                            ? () => ref
+                                .read(browserTabStoreProvider.notifier)
+                                .closeTab(index)
+                            : null,
                       ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: IconButton(
+              tooltip: '新标签页',
+              icon: const Icon(Icons.add),
+              visualDensity: compact
+                  ? VisualDensity.compact
+                  : VisualDensity.standard,
+              onPressed: () =>
+                  ref.read(browserTabStoreProvider.notifier).addTab(),
+            ),
+          ),
           if (showSniff)
             Padding(
-              padding: EdgeInsets.fromLTRB(4, compact ? 4 : 6, 8, compact ? 4 : 6),
+              padding: EdgeInsets.fromLTRB(
+                8,
+                compact ? 4 : 6,
+                12,
+                compact ? 4 : 6,
+              ),
               child: Badge(
                 isLabelVisible: sniffCount > 0,
                 backgroundColor: AppColors.error,

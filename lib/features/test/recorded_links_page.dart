@@ -1,13 +1,16 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/download_file_name.dart';
 import '../../core/download_manager.dart';
 import '../../core/providers.dart';
 import '../../data/database.dart';
 import '../../theme/app_theme.dart';
+import '../downloads/rename_dialog.dart';
 
 class RecordedLinksPage extends ConsumerWidget {
   const RecordedLinksPage({super.key});
@@ -124,6 +127,8 @@ class _RecordedLinkTileState extends ConsumerState<_RecordedLinkTile> {
   String get _recordedAtLabel =>
       DateFormat('yyyy-MM-dd HH:mm').format(widget.link.recordedAt);
 
+  String get _title => recordedLinkDisplayName(widget.link);
+
   Future<void> _copy() async {
     await Clipboard.setData(ClipboardData(text: widget.link.url));
     if (mounted) {
@@ -153,6 +158,7 @@ class _RecordedLinkTileState extends ConsumerState<_RecordedLinkTile> {
 
     await manager.enqueue(
       widget.link.url,
+      suggestedName: _title,
       onUpdate: (state) {
         if (!mounted) return;
         switch (state.status) {
@@ -180,6 +186,19 @@ class _RecordedLinkTileState extends ConsumerState<_RecordedLinkTile> {
     );
   }
 
+  Future<void> _rename() async {
+    final newName = await showRenameDialog(
+      context,
+      initialName: DownloadFileName.forDisplay(_title),
+    );
+    if (newName == null || newName.trim().isEmpty) return;
+    final cleaned = DownloadFileName.sanitize(newName.trim());
+    if (cleaned.isEmpty) return;
+    await ref
+        .read(recordedLinkRepositoryProvider)
+        .updateDisplayName(widget.link.id, cleaned);
+  }
+
   Future<void> _delete() async {
     await ref.read(recordedLinkRepositoryProvider).deleteById(widget.link.id);
     if (mounted) {
@@ -191,65 +210,121 @@ class _RecordedLinkTileState extends ConsumerState<_RecordedLinkTile> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Column(
+    return GestureDetector(
+      onLongPress: _rename,
+      child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            widget.link.url,
-            style: const TextStyle(fontSize: 13),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '记录于 $_recordedAtLabel',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: 10),
-          if (_downloading)
-            const SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                OutlinedButton(
-                  onPressed: _copy,
-                  child: const Text('复制'),
+                Text(
+                  _title,
+                  style: AppText.listTitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                FilledButton(
-                  onPressed: _download,
-                  child: const Text('下载'),
+                const SizedBox(height: 4),
+                Text(
+                  widget.link.url,
+                  style: AppText.listSubtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                OutlinedButton(
-                  onPressed: _delete,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Theme.of(context).colorScheme.error,
+                const SizedBox(height: 2),
+                Text(
+                  '记录于 $_recordedAtLabel',
+                  style: AppText.listSubtitle,
+                ),
+                const SizedBox(height: 10),
+                if (_downloading)
+                  const SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton(
+                        onPressed: _copy,
+                        child: const Text('复制'),
+                      ),
+                      FilledButton(
+                        onPressed: _download,
+                        child: const Text('下载'),
+                      ),
+                      OutlinedButton(
+                        onPressed: _delete,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Theme.of(context).colorScheme.error,
+                        ),
+                        child: const Text('删除'),
+                      ),
+                    ],
                   ),
-                  child: const Text('删除'),
-                ),
               ],
             ),
+          ),
+          PopupMenuButton<String>(
+            tooltip: '操作',
+            onSelected: (value) async {
+              await Future<void>.delayed(const Duration(milliseconds: 150));
+              if (!mounted) return;
+              if (value == 'rename') await _rename();
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'rename', child: Text('重命名')),
+            ],
+          ),
         ],
       ),
+    ),
     );
   }
 }
 
+String recordedLinkDisplayName(RecordedLink link) {
+  final named = link.displayName?.trim();
+  return DownloadFileName.forList(
+    name: named != null && named.isNotEmpty
+        ? named
+        : DownloadFileName.fromSuggestion(url: link.url),
+    url: link.url,
+  );
+}
+
 /// Inserts [url] into link history if not already present. Returns true if inserted.
-Future<bool> ensureEv1LinkRecorded(WidgetRef ref, String url) async {
+Future<bool> ensureEv1LinkRecorded(
+  WidgetRef ref,
+  String url, {
+  String? name,
+}) async {
   final repo = ref.read(recordedLinkRepositoryProvider);
-  if (await repo.existsByUrl(url)) return false;
+  final existing = await repo.findByUrl(url);
+  final cleaned = name == null || name.trim().isEmpty
+      ? null
+      : DownloadFileName.sanitize(name.trim());
+  if (existing != null) {
+    final hasName = existing.displayName != null &&
+        existing.displayName!.trim().isNotEmpty;
+    if (!hasName && cleaned != null) {
+      await repo.updateDisplayName(existing.id, cleaned);
+    }
+    return false;
+  }
 
   const uuid = Uuid();
   await repo.insert(
     RecordedLinksCompanion.insert(
       id: uuid.v4(),
       url: url,
+      displayName: Value(cleaned),
       recordedAt: DateTime.now(),
     ),
   );
@@ -259,14 +334,21 @@ Future<bool> ensureEv1LinkRecorded(WidgetRef ref, String url) async {
 Future<void> recordEv1Link(
   BuildContext context,
   WidgetRef ref,
-  String url,
-) async {
-  final inserted = await ensureEv1LinkRecorded(ref, url);
-  if (!context.mounted) return;
-
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(inserted ? '已记录链接' : '该链接已在记录中'),
-    ),
-  );
+  String url, {
+  String? name,
+}) async {
+  try {
+    final inserted = await ensureEv1LinkRecorded(ref, url, name: name);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(inserted ? '已记录链接' : '该链接已在记录中'),
+      ),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('记录失败：$e')),
+    );
+  }
 }

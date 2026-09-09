@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/download_file_name.dart';
 import '../../core/download_manager.dart';
 import '../../core/providers.dart';
 import '../../core/sniff_registry.dart';
 import '../../data/database.dart';
 import '../../theme/app_theme.dart';
-import '../downloads/video_player_screen.dart';
-import 'download_name_dialog.dart';
 import 'mobile_browser_config.dart';
 import '../test/recorded_links_page.dart';
 
@@ -102,21 +101,24 @@ class _SniffTile extends ConsumerWidget {
     final registry = ref.read(sniffRegistryProvider);
     final manager = ref.watch(downloadManagerProvider).value;
     final repo = ref.watch(videoRepositoryProvider);
+    final existing = repo.findByEv1UrlIn(videos, entry.url);
     final recordedLinks = ref.watch(recordedLinksStreamProvider).value ?? [];
     final recordedRepo = ref.watch(recordedLinkRepositoryProvider);
-    final existing = repo.findByEv1UrlIn(videos, entry.url);
     final isRecorded = recordedRepo.findByUrlIn(recordedLinks, entry.url) != null;
-    final displayName = existing?.displayName ?? SniffRegistry.displayTitle(entry);
+    final displayName = DownloadFileName.forList(
+      name: existing?.displayName ?? SniffRegistry.displayTitle(entry),
+      url: entry.url,
+      filePath: existing?.filePath,
+    );
 
     Widget trailing;
-    if (existing != null) {
-      trailing = OutlinedButton(
-        onPressed: () =>
-            VideoPlayerScreen.playWithSystemPlayer(context, existing),
-        child: const Text('播放'),
+    if (existing != null || entry.status == SniffStatus.done) {
+      trailing = Text(
+        '已下载',
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: AppColors.success,
+            ),
       );
-    } else if (entry.status == SniffStatus.done) {
-      trailing = const Icon(Icons.check_circle, color: AppColors.success);
     } else if (entry.status == SniffStatus.downloading) {
       trailing = SizedBox(
         width: 24,
@@ -130,7 +132,12 @@ class _SniffTile extends ConsumerWidget {
           OutlinedButton(
             onPressed: isRecorded
                 ? null
-                : () => recordEv1Link(context, ref, entry.url),
+                : () => recordEv1Link(
+                      context,
+                      ref,
+                      entry.url,
+                      name: SniffRegistry.displayTitle(entry),
+                    ),
             child: Text(isRecorded ? '已记录' : '记录'),
           ),
           const SizedBox(width: 8),
@@ -139,21 +146,21 @@ class _SniffTile extends ConsumerWidget {
               icon: const Icon(Icons.refresh),
               onPressed: manager == null
                   ? null
-                  : () => _download(context, ref, registry, manager),
+                  : () => _download(ref, registry, manager),
             )
           else
             FilledButton(
               onPressed: manager == null
                   ? null
-                  : () => _download(context, ref, registry, manager),
+                  : () => _download(ref, registry, manager),
               child: const Text('下载'),
             ),
         ],
       );
     }
 
-    final subtitle = existing != null
-        ? '已下载'
+    final subtitle = existing != null || entry.status == SniffStatus.done
+        ? null
         : switch (entry.status) {
             SniffStatus.pending => null,
             SniffStatus.downloading =>
@@ -164,8 +171,12 @@ class _SniffTile extends ConsumerWidget {
 
     return ListTile(
       leading: Icon(
-        existing != null ? Icons.check_circle_outline : Icons.link,
-        color: existing != null ? AppColors.success : AppColors.textSecondary,
+        existing != null || entry.status == SniffStatus.done
+            ? Icons.check_circle_outline
+            : Icons.link,
+        color: existing != null || entry.status == SniffStatus.done
+            ? AppColors.success
+            : AppColors.textSecondary,
       ),
       title: Text(
         displayName,
@@ -179,10 +190,6 @@ class _SniffTile extends ConsumerWidget {
             entry.url,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
           ),
           if (subtitle != null) Text(subtitle),
         ],
@@ -192,20 +199,21 @@ class _SniffTile extends ConsumerWidget {
   }
 
   Future<void> _download(
-    BuildContext context,
     WidgetRef ref,
     SniffRegistry registry,
     DownloadManager manager,
   ) async {
-    final defaultName = SniffRegistry.displayTitle(entry);
-    final fileName = await showDownloadNameDialog(
-      context,
-      defaultName: defaultName,
-    );
-    if (fileName == null) return;
-    if (!context.mounted) return;
+    final fileName = SniffRegistry.displayTitle(entry);
 
-    await ensureEv1LinkRecorded(ref, entry.url);
+    try {
+      await ensureEv1LinkRecorded(
+        ref,
+        entry.url,
+        name: fileName,
+      );
+    } catch (_) {
+      // Recording must not block download.
+    }
     registry.updateEntry(
       tabId,
       entry.url,

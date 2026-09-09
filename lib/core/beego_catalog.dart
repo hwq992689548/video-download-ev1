@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'ev1_url.dart';
+
 /// Parses Beego course catalog API and maps video id → lesson title.
 class BeegoCatalog {
   final Map<String, String> _vidToTitle = {};
@@ -7,16 +9,57 @@ class BeegoCatalog {
 
   Map<String, String> get titles => Map.unmodifiable(_vidToTitle);
 
+  String? get lastPlayVid => _lastPlayVid;
+
+  void putVidTitle(String vid, String name) {
+    _putVidTitle(vid, name, depth: 3);
+  }
+
+  static bool looksLikeCatalogJson(String text) {
+    return text.contains('pvideoId') ||
+        text.contains('catName') ||
+        text.contains('videoName') ||
+        text.contains('videoname') ||
+        text.contains('pptName');
+  }
+
   void ingestCatalogJson(String responseText) {
-    if (responseText.trim().isEmpty) return;
+    final decoded = _decodeJson(responseText);
+    if (decoded == null) return;
+    if (decoded is Map) {
+      final data = decoded['data'];
+      if (data is List) {
+        _walkCatalog(data);
+      }
+    }
+    _walkAny(decoded);
+  }
+
+  void ingestVidTitleMap(String jsonMap) {
+    final decoded = _decodeJson(jsonMap);
+    if (decoded is! Map) return;
+    decoded.forEach((key, value) {
+      _putVidTitle(key.toString(), value?.toString() ?? '', depth: 3);
+    });
+  }
+
+  static Object? _decodeJson(String responseText) {
+    final trimmed = responseText.trim();
+    if (trimmed.isEmpty) return null;
     try {
-      final json = jsonDecode(responseText);
-      if (json is! Map<String, dynamic>) return;
-      final data = json['data'];
-      if (data is! List) return;
-      _walkCatalog(data);
+      return jsonDecode(trimmed);
     } catch (_) {
-      /* ignore malformed payloads */
+      final start = trimmed.indexOf('{');
+      final startArr = trimmed.indexOf('[');
+      var from = start;
+      if (from < 0 || (startArr >= 0 && startArr < from)) from = startArr;
+      final end = trimmed.lastIndexOf(from >= 0 && trimmed[from] == '[' ? ']' : '}');
+      if (from < 0 || end <= from) return null;
+      try {
+        return jsonDecode(trimmed.substring(from, end + 1));
+      } catch (_) {
+        return null;
+      }
     }
   }
 
@@ -27,22 +70,81 @@ class BeegoCatalog {
       final vid = map['pvideoId']?.toString().trim() ?? '';
       final name = map['catName']?.toString().trim() ?? '';
       final level = map['level'];
-      if (RegExp(r'^\d+$').hasMatch(vid) && name.isNotEmpty) {
-        final normalized = normalizeLessonTitle(name);
-        if (isValidLessonTitle(normalized)) {
-          final depth = level is int ? level : int.tryParse('$level') ?? 0;
-          final existing = _vidToTitle[vid];
-          if (existing == null || depth >= 3) {
-            _vidToTitle[vid] = normalized;
-          }
-        }
-      }
+      final depth = level is int ? level : int.tryParse('$level') ?? 0;
+      _putVidTitle(vid, name, depth: depth);
       final children = map['childList'];
       if (children is List) {
         _walkCatalog(children);
       }
     }
   }
+
+  void _walkAny(Object? node) {
+    if (node is List) {
+      for (final item in node) {
+        _walkAny(item);
+      }
+      return;
+    }
+    if (node is! Map) return;
+    final map = Map<String, dynamic>.from(node);
+    final vid = _vidFrom(map);
+    final name = _nameFrom(map);
+    if (vid.isNotEmpty && name.isNotEmpty) {
+      _putVidTitle(vid, name, depth: 3);
+    }
+    for (final value in map.values) {
+      if (value is Map || value is List) {
+        _walkAny(value);
+      }
+    }
+  }
+
+  void _putVidTitle(String vid, String name, {int depth = 0}) {
+    if (!RegExp(r'^\d{6,}$').hasMatch(vid) || name.isEmpty) return;
+    final normalized = normalizeLessonTitle(name);
+    if (!isValidLessonTitle(normalized)) return;
+    final existing = _vidToTitle[vid];
+    if (existing == null || depth >= 3 || normalized.length >= existing.length) {
+      _vidToTitle[vid] = normalized;
+    }
+  }
+
+  static String _vidFrom(Map<String, dynamic> map) {
+    const keys = [
+      'pvideoId',
+      'pVideoId',
+      'videoid',
+      'videoId',
+      'video_id',
+      'vid',
+    ];
+    for (final key in keys) {
+      final value = map[key]?.toString().trim() ?? '';
+      if (RegExp(r'^\d{6,}$').hasMatch(value)) return value;
+    }
+    return '';
+  }
+
+  static String _nameFrom(Map<String, dynamic> map) {
+    const keys = [
+      'catName',
+      'videoName',
+      'videoname',
+      'pptName',
+      'lessonName',
+      'title',
+      'name',
+    ];
+    for (final key in keys) {
+      final value = map[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && _hasCjk(value)) return value;
+    }
+    return '';
+  }
+
+  static bool _hasCjk(String text) =>
+      RegExp(r'[\u4e00-\u9fff]').hasMatch(text);
 
   void trackPlayVid(String url) {
     final uri = Uri.tryParse(url);
@@ -72,6 +174,9 @@ class BeegoCatalog {
     return null;
   }
 
+  /// Filename stem from CDN path, e.g. `198409541_c34f0e3e..._eocoQLcR`.
+  static String? resourceStemFromUrl(String url) => Ev1Url.resourceStem(url);
+
   static String normalizeLessonTitle(String raw) {
     var text = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
     text = text.replaceFirst(
@@ -95,6 +200,14 @@ class BeegoCatalog {
       '录播',
       '直播',
       '正在播放',
+      '商品详情',
+      '课程详情',
+      '试看',
+      '预览',
+      '高清',
+      '超清',
+      '标清',
+      '流畅',
       'loading',
       'Loading...',
     };

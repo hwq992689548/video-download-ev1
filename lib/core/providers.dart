@@ -68,6 +68,15 @@ final allVideosStreamProvider = StreamProvider<List<VideoRecord>>((ref) {
   return ref.watch(videoRepositoryProvider).watchAll();
 });
 
+final videoSearchStreamProvider =
+    StreamProvider.family<List<VideoRecord>, String>((ref, query) {
+  return ref.watch(videoRepositoryProvider).search(query);
+});
+
+final pendingDownloadsStreamProvider = StreamProvider<List<DownloadTask>>((ref) {
+  return ref.watch(downloadTaskRepositoryProvider).watchPending();
+});
+
 final recordedLinksStreamProvider = StreamProvider<List<RecordedLink>>((ref) {
   return ref.watch(recordedLinkRepositoryProvider).watchAll();
 });

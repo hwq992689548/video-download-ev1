@@ -1482,6 +1482,17 @@ class $RecordedLinksTable extends RecordedLinks
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _displayNameMeta = const VerificationMeta(
+    'displayName',
+  );
+  @override
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _recordedAtMeta = const VerificationMeta(
     'recordedAt',
   );
@@ -1494,7 +1505,7 @@ class $RecordedLinksTable extends RecordedLinks
     requiredDuringInsert: true,
   );
   @override
-  List<GeneratedColumn> get $columns => [id, url, recordedAt];
+  List<GeneratedColumn> get $columns => [id, url, displayName, recordedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1519,6 +1530,15 @@ class $RecordedLinksTable extends RecordedLinks
       );
     } else if (isInserting) {
       context.missing(_urlMeta);
+    }
+    if (data.containsKey('display_name')) {
+      context.handle(
+        _displayNameMeta,
+        displayName.isAcceptableOrUnknown(
+          data['display_name']!,
+          _displayNameMeta,
+        ),
+      );
     }
     if (data.containsKey('recorded_at')) {
       context.handle(
@@ -1545,6 +1565,10 @@ class $RecordedLinksTable extends RecordedLinks
         DriftSqlType.string,
         data['${effectivePrefix}url'],
       )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      ),
       recordedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}recorded_at'],
@@ -1561,10 +1585,12 @@ class $RecordedLinksTable extends RecordedLinks
 class RecordedLink extends DataClass implements Insertable<RecordedLink> {
   final String id;
   final String url;
+  final String? displayName;
   final DateTime recordedAt;
   const RecordedLink({
     required this.id,
     required this.url,
+    this.displayName,
     required this.recordedAt,
   });
   @override
@@ -1572,6 +1598,9 @@ class RecordedLink extends DataClass implements Insertable<RecordedLink> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['url'] = Variable<String>(url);
+    if (!nullToAbsent || displayName != null) {
+      map['display_name'] = Variable<String>(displayName);
+    }
     map['recorded_at'] = Variable<DateTime>(recordedAt);
     return map;
   }
@@ -1580,6 +1609,9 @@ class RecordedLink extends DataClass implements Insertable<RecordedLink> {
     return RecordedLinksCompanion(
       id: Value(id),
       url: Value(url),
+      displayName: displayName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(displayName),
       recordedAt: Value(recordedAt),
     );
   }
@@ -1592,6 +1624,7 @@ class RecordedLink extends DataClass implements Insertable<RecordedLink> {
     return RecordedLink(
       id: serializer.fromJson<String>(json['id']),
       url: serializer.fromJson<String>(json['url']),
+      displayName: serializer.fromJson<String?>(json['displayName']),
       recordedAt: serializer.fromJson<DateTime>(json['recordedAt']),
     );
   }
@@ -1601,20 +1634,29 @@ class RecordedLink extends DataClass implements Insertable<RecordedLink> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'url': serializer.toJson<String>(url),
+      'displayName': serializer.toJson<String?>(displayName),
       'recordedAt': serializer.toJson<DateTime>(recordedAt),
     };
   }
 
-  RecordedLink copyWith({String? id, String? url, DateTime? recordedAt}) =>
-      RecordedLink(
-        id: id ?? this.id,
-        url: url ?? this.url,
-        recordedAt: recordedAt ?? this.recordedAt,
-      );
+  RecordedLink copyWith({
+    String? id,
+    String? url,
+    Value<String?> displayName = const Value.absent(),
+    DateTime? recordedAt,
+  }) => RecordedLink(
+    id: id ?? this.id,
+    url: url ?? this.url,
+    displayName: displayName.present ? displayName.value : this.displayName,
+    recordedAt: recordedAt ?? this.recordedAt,
+  );
   RecordedLink copyWithCompanion(RecordedLinksCompanion data) {
     return RecordedLink(
       id: data.id.present ? data.id.value : this.id,
       url: data.url.present ? data.url.value : this.url,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
       recordedAt: data.recordedAt.present
           ? data.recordedAt.value
           : this.recordedAt,
@@ -1626,36 +1668,41 @@ class RecordedLink extends DataClass implements Insertable<RecordedLink> {
     return (StringBuffer('RecordedLink(')
           ..write('id: $id, ')
           ..write('url: $url, ')
+          ..write('displayName: $displayName, ')
           ..write('recordedAt: $recordedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, url, recordedAt);
+  int get hashCode => Object.hash(id, url, displayName, recordedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is RecordedLink &&
           other.id == this.id &&
           other.url == this.url &&
+          other.displayName == this.displayName &&
           other.recordedAt == this.recordedAt);
 }
 
 class RecordedLinksCompanion extends UpdateCompanion<RecordedLink> {
   final Value<String> id;
   final Value<String> url;
+  final Value<String?> displayName;
   final Value<DateTime> recordedAt;
   final Value<int> rowid;
   const RecordedLinksCompanion({
     this.id = const Value.absent(),
     this.url = const Value.absent(),
+    this.displayName = const Value.absent(),
     this.recordedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   RecordedLinksCompanion.insert({
     required String id,
     required String url,
+    this.displayName = const Value.absent(),
     required DateTime recordedAt,
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -1664,12 +1711,14 @@ class RecordedLinksCompanion extends UpdateCompanion<RecordedLink> {
   static Insertable<RecordedLink> custom({
     Expression<String>? id,
     Expression<String>? url,
+    Expression<String>? displayName,
     Expression<DateTime>? recordedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (url != null) 'url': url,
+      if (displayName != null) 'display_name': displayName,
       if (recordedAt != null) 'recorded_at': recordedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1678,12 +1727,14 @@ class RecordedLinksCompanion extends UpdateCompanion<RecordedLink> {
   RecordedLinksCompanion copyWith({
     Value<String>? id,
     Value<String>? url,
+    Value<String?>? displayName,
     Value<DateTime>? recordedAt,
     Value<int>? rowid,
   }) {
     return RecordedLinksCompanion(
       id: id ?? this.id,
       url: url ?? this.url,
+      displayName: displayName ?? this.displayName,
       recordedAt: recordedAt ?? this.recordedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -1697,6 +1748,9 @@ class RecordedLinksCompanion extends UpdateCompanion<RecordedLink> {
     }
     if (url.present) {
       map['url'] = Variable<String>(url.value);
+    }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
     }
     if (recordedAt.present) {
       map['recorded_at'] = Variable<DateTime>(recordedAt.value);
@@ -1712,6 +1766,7 @@ class RecordedLinksCompanion extends UpdateCompanion<RecordedLink> {
     return (StringBuffer('RecordedLinksCompanion(')
           ..write('id: $id, ')
           ..write('url: $url, ')
+          ..write('displayName: $displayName, ')
           ..write('recordedAt: $recordedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -2510,6 +2565,7 @@ typedef $$RecordedLinksTableCreateCompanionBuilder =
     RecordedLinksCompanion Function({
       required String id,
       required String url,
+      Value<String?> displayName,
       required DateTime recordedAt,
       Value<int> rowid,
     });
@@ -2517,6 +2573,7 @@ typedef $$RecordedLinksTableUpdateCompanionBuilder =
     RecordedLinksCompanion Function({
       Value<String> id,
       Value<String> url,
+      Value<String?> displayName,
       Value<DateTime> recordedAt,
       Value<int> rowid,
     });
@@ -2537,6 +2594,11 @@ class $$RecordedLinksTableFilterComposer
 
   ColumnFilters<String> get url => $composableBuilder(
     column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayName => $composableBuilder(
+    column: $table.displayName,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2565,6 +2627,11 @@ class $$RecordedLinksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get recordedAt => $composableBuilder(
     column: $table.recordedAt,
     builder: (column) => ColumnOrderings(column),
@@ -2585,6 +2652,11 @@ class $$RecordedLinksTableAnnotationComposer
 
   GeneratedColumn<String> get url =>
       $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get recordedAt => $composableBuilder(
     column: $table.recordedAt,
@@ -2625,11 +2697,13 @@ class $$RecordedLinksTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> url = const Value.absent(),
+                Value<String?> displayName = const Value.absent(),
                 Value<DateTime> recordedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => RecordedLinksCompanion(
                 id: id,
                 url: url,
+                displayName: displayName,
                 recordedAt: recordedAt,
                 rowid: rowid,
               ),
@@ -2637,11 +2711,13 @@ class $$RecordedLinksTableTableManager
               ({
                 required String id,
                 required String url,
+                Value<String?> displayName = const Value.absent(),
                 required DateTime recordedAt,
                 Value<int> rowid = const Value.absent(),
               }) => RecordedLinksCompanion.insert(
                 id: id,
                 url: url,
+                displayName: displayName,
                 recordedAt: recordedAt,
                 rowid: rowid,
               ),

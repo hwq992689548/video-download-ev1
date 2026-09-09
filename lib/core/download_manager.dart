@@ -156,6 +156,14 @@ class DownloadManager {
     await _enqueueExisting(task);
   }
 
+  Future<void> renamePending(String taskId, String name) async {
+    final cleaned = DownloadFileName.sanitize(name.trim());
+    if (cleaned.isEmpty) return;
+    final task = await _tasks.getById(taskId);
+    if (task == null) return;
+    await _tasks.updateSuggestedName(taskId, cleaned);
+  }
+
   Future<void> cancel(String taskId) async {
     _cancelledIds.add(taskId);
     _cancelTokens[taskId]?.cancel('User cancelled');
@@ -239,15 +247,19 @@ class DownloadManager {
     }
   }
 
+  Future<String> _resolvedDisplayName(_QueuedJob job) async {
+    final latest = await _tasks.getById(job.id);
+    return DownloadFileName.fromSuggestion(
+      url: job.url,
+      suggested: latest?.suggestedName ?? job.suggestedName,
+    );
+  }
+
   Future<void> _runJob(_QueuedJob job) async {
     final directExt = SniffRegistry.directFileExtension(job.url);
     final isDirect = directExt != null;
     final tmpFlvPath = p.join(_tempDir.path, '${job.id}.flv.tmp');
-    final displayName = DownloadFileName.fromSuggestion(
-      url: job.url,
-      suggested: job.suggestedName,
-    );
-    var finalPath = p.join(_videosDir.path, displayName);
+    var finalPath = p.join(_videosDir.path, '${job.id}.tmpout');
     final cancelToken = CancelToken();
 
     void emit(DownloadJobStatus status, {double progress = 0, String? error}) {
@@ -349,7 +361,7 @@ class DownloadManager {
 
       finalPath = await DownloadFileName.uniquePath(
         _videosDir.path,
-        fileName: displayName,
+        fileName: await _resolvedDisplayName(job),
       );
 
       if (isDirect) {

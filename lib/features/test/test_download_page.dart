@@ -384,7 +384,6 @@ class _TestSniffTile extends StatelessWidget {
         entry.url,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 13),
       ),
       subtitle: Text(subtitle),
       trailing: trailing,

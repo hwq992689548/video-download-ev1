@@ -1,10 +1,13 @@
 import 'dart:collection';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import '../../core/beego_catalog.dart';
 import '../../core/ev1_url.dart';
+import '../../core/lesson_title.dart';
 import '../../core/sniff_registry.dart';
 import '../../core/sniff_title_log.dart';
 import 'mobile_browser_config.dart';
@@ -36,6 +39,7 @@ class WebViewPageState extends State<WebViewPage> {
   bool _canGoBack = false;
   bool _canGoForward = false;
   String? _sniffJs;
+  var _domScrapeGen = 0;
 
   @override
   void initState() {
@@ -109,6 +113,52 @@ class WebViewPageState extends State<WebViewPage> {
       title: title,
       source: source,
     );
+    _scheduleDomTitleScrape();
+  }
+
+  void _scheduleDomTitleScrape() {
+    final controller = _controller;
+    if (controller == null) return;
+    final gen = ++_domScrapeGen;
+    sniffTitleLog('dom-scrape scheduled gen=$gen');
+    Future<void>.delayed(const Duration(milliseconds: 400), () {
+      if (!mounted || gen != _domScrapeGen) return;
+      _scrapeDomTitle(controller);
+    });
+    Future<void>.delayed(const Duration(milliseconds: 1800), () {
+      if (!mounted || gen != _domScrapeGen) return;
+      _scrapeDomTitle(controller);
+    });
+  }
+
+  Future<void> _scrapeDomTitle(InAppWebViewController controller) async {
+    try {
+      final stems = widget.sniffRegistry
+          .entriesFor(widget.tabId)
+          .map((e) => BeegoCatalog.resourceStemFromUrl(e.url))
+          .whereType<String>()
+          .toSet()
+          .toList();
+      final playVid = widget.sniffRegistry.lastPlayVid(widget.tabId) ?? '';
+      final payload = jsonEncode({'stems': stems, 'playVid': playVid});
+      final source = '(${domLessonTitleScrapeJs.trim()})($payload)';
+      sniffTitleLog('dom-scrape stems=$stems playVid=$playVid');
+      final raw = await controller.evaluateJavascript(source: source);
+      final parsed = parseDomLessonScrape(raw);
+      sniffTitleLog(
+        'dom-scrape chosen=${parsed.chosen ?? "(null)"} '
+        'trial=${parsed.trial ?? "(null)"} '
+        'byStem=${parsed.byStem} byVid=${parsed.byVid} '
+        'debug=${parsed.debug}',
+      );
+      widget.sniffRegistry.applyDomLessonScrape(
+        widget.tabId,
+        parsed,
+        source: 'dom-scrape',
+      );
+    } catch (e) {
+      sniffTitleLog('dom-scrape failed: $e');
+    }
   }
 
   Future<AjaxRequestAction?> _onAjaxReadyStateChange(
@@ -121,25 +171,20 @@ class WebViewPageState extends State<WebViewPage> {
 
     if (url.contains('getPlayToken') || url.contains('getPlayUrl')) {
       widget.sniffRegistry.trackPlayVid(widget.tabId, url);
-    }
-
-    if (url.contains('findCourseCatBycourseId') &&
-        ajaxRequest.readyState == AjaxRequestReadyState.DONE &&
-        ajaxRequest.status == 200) {
-      final text = ajaxRequest.responseText;
-      if (text != null && text.isNotEmpty) {
-        widget.sniffRegistry.ingestCatalog(
-          widget.tabId,
-          text,
-          source: 'ajax-response',
-        );
-      }
+      _scheduleDomTitleScrape();
     }
 
     if (ajaxRequest.readyState == AjaxRequestReadyState.DONE &&
         ajaxRequest.status == 200) {
       final text = ajaxRequest.responseText;
       if (text != null && text.isNotEmpty) {
+        if (BeegoCatalog.looksLikeCatalogJson(text)) {
+          widget.sniffRegistry.ingestCatalog(
+            widget.tabId,
+            text,
+            source: url.contains('findCourseCat') ? 'ajax-catalog' : 'ajax-json',
+          );
+        }
         final found = SniffRegistry.extractUrlsFromText(text);
         sniffLog(
           'ajax',
@@ -205,6 +250,21 @@ class WebViewPageState extends State<WebViewPage> {
           },
         );
         controller.addJavaScriptHandler(
+          handlerName: 'playVid',
+          callback: (args) {
+            if (args.isEmpty) return null;
+            final vid = args.first.toString();
+            if (!RegExp(r'^\d{6,}$').hasMatch(vid)) return null;
+            sniffTitleLog('playVid=$vid');
+            widget.sniffRegistry.trackPlayVid(
+              widget.tabId,
+              'https://m.beegoedu.com/rest/mall/getPlayToken?vid=$vid',
+            );
+            _scheduleDomTitleScrape();
+            return null;
+          },
+        );
+        controller.addJavaScriptHandler(
           handlerName: 'ev1Detected',
           callback: (args) {
             if (args.isEmpty) return null;
@@ -220,6 +280,19 @@ class WebViewPageState extends State<WebViewPage> {
               source: 'js-handler',
               titleDebug: parsed.debug,
             );
+            _scheduleDomTitleScrape();
+            return null;
+          },
+        );
+        controller.addJavaScriptHandler(
+          handlerName: 'catalogMap',
+          callback: (args) {
+            if (args.isEmpty) return null;
+            widget.sniffRegistry.ingestVidTitleMap(
+              widget.tabId,
+              args.first.toString(),
+              source: 'js-map',
+            );
             return null;
           },
         );
@@ -231,6 +304,10 @@ class WebViewPageState extends State<WebViewPage> {
       shouldInterceptFetchRequest: (controller, request) async {
         final url = request.url.toString();
         final rewritten = Ev1Url.rewritePlayUrl(url);
+        if (url.contains('getPlayToken') || rewritten.contains('getPlayUrl')) {
+          widget.sniffRegistry.trackPlayVid(widget.tabId, rewritten);
+          _scheduleDomTitleScrape();
+        }
         _registerUrl(rewritten, source: 'intercept-fetch');
         if (rewritten != url) {
           sniffLog('rewrite', 'fetch $url -> $rewritten');
@@ -274,6 +351,7 @@ class WebViewPageState extends State<WebViewPage> {
           );
         }
         await _updateNavState();
+        _scheduleDomTitleScrape();
       },
       onTitleChanged: (controller, title) {
         if (title != null && title.isNotEmpty) {

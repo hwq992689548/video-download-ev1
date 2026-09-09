@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'beego_catalog.dart';
 import 'ev1_url.dart';
+import 'lesson_title.dart';
 import 'sniff_title_log.dart';
 
 enum SniffStatus { pending, downloading, done, failed }
@@ -60,8 +61,39 @@ class SniffRegistry extends ChangeNotifier {
     }
   }
 
+  void ingestVidTitleMap(String tabId, String jsonMap, {String source = 'js-map'}) {
+    final catalog = _catalogFor(tabId);
+    final before = catalog.titles.length;
+    catalog.ingestVidTitleMap(jsonMap);
+    final after = catalog.titles.length;
+    sniffTitleLog(
+      'ingestVidTitleMap [$source] tab=$tabId added=${after - before} total=$after',
+    );
+    if (after > before) {
+      _backfillFromCatalog(tabId, source: source);
+    }
+  }
+
   void trackPlayVid(String tabId, String url) {
     _catalogFor(tabId).trackPlayVid(url);
+  }
+
+  String? lastPlayVid(String tabId) => _catalogFor(tabId).lastPlayVid;
+
+  void rememberTitleForVid(
+    String tabId,
+    String vid,
+    String? title, {
+    String source = 'unknown',
+  }) {
+    final cleaned = _cleanTitle(title);
+    sniffTitleLog(
+      'rememberTitle [$source] vid=$vid raw=${title ?? "(null)"} '
+      'cleaned=${cleaned ?? "(null)"}',
+    );
+    if (cleaned == null) return;
+    _catalogFor(tabId).putVidTitle(vid, cleaned);
+    _backfillFromCatalog(tabId, source: source);
   }
 
   String? lookupCatalogTitle(String tabId, String videoUrl) {
@@ -134,7 +166,7 @@ class SniffRegistry extends ChangeNotifier {
     if (!isSniffableUrl(url)) return;
     final normalized = url.trim();
     final cleanedCatalog = lookupCatalogTitle(tabId, normalized);
-    final cleanedTitle = _pickBetterTitle(_cleanTitle(title), cleanedCatalog);
+    final cleanedTitle = cleanedCatalog ?? _cleanTitle(title);
     final list = _entriesByTab.putIfAbsent(tabId, () => []);
     final vid = BeegoCatalog.extractVidFromUrl(normalized);
     if (isBaijiayunDirectUrl(normalized) && vid != null) {
@@ -155,9 +187,11 @@ class SniffRegistry extends ChangeNotifier {
     if (index >= 0) {
       // Refresh signed URL while keeping download state.
       final existing = list[index];
-      final mergedTitle = existing.status == SniffStatus.pending
-          ? _pickBetterTitle(existing.title, cleanedTitle)
-          : (existing.title ?? cleanedTitle);
+      final jsTitle = _cleanTitle(title);
+      final mergedTitle = cleanedCatalog ??
+          (existing.status == SniffStatus.pending
+              ? _pickBetterTitle(existing.title, jsTitle)
+              : (existing.title ?? jsTitle));
       sniffTitleLog(
         'register/update [$source] tab=$tabId\n'
         '  rawTitle=${title ?? "(null)"}\n'
@@ -222,6 +256,12 @@ class SniffRegistry extends ChangeNotifier {
       '电话',
       '公众号',
       '搜索课程代码/名称',
+      '商品详情',
+      '课程详情',
+      '试看',
+      '预览',
+      '高清',
+      '超清',
     };
     if (ignored.contains(sanitized)) return null;
     if (sanitized.startsWith('搜索')) return null;
@@ -244,7 +284,6 @@ class SniffRegistry extends ChangeNotifier {
     var text = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
     text = _dedupeRepeatedPrefix(text);
     text = text.replaceAll(RegExp(r'[-–—|]\s*必过学习平台$'), '');
-    text = text.replaceFirst(_sectionPrefix, '').trim();
 
     if (text.contains('必过学习平台')) return null;
     if (text.contains('单科基础班') || RegExp(r'班$').hasMatch(text)) {
@@ -276,7 +315,7 @@ class SniffRegistry extends ChangeNotifier {
     if (t.contains('班')) score -= 200;
     if (RegExp(r'^[￥¥]').hasMatch(t)) score -= 500;
     if (RegExp(r'^线路').hasMatch(t)) score -= 500;
-    if (_sectionPrefix.hasMatch(t)) score -= 40;
+    if (_sectionPrefix.hasMatch(t)) score += 80;
     if (t.length >= 4 && t.length <= 40) score += 40;
     if (t.length > 80) score -= 100;
     if (_cleanTitle(t) == null) score = 0;
@@ -292,14 +331,12 @@ class SniffRegistry extends ChangeNotifier {
       final entry = list[i];
       final catalogTitle = lookupCatalogTitle(tabId, entry.url);
       if (catalogTitle == null) continue;
-      final merged = _pickBetterTitle(entry.title, catalogTitle);
-      if (merged != entry.title) {
-        list[i] = entry.copyWith(title: merged);
-        changed++;
-        sniffTitleLog(
-          'catalog backfill [$source] url=${_shortUrl(entry.url)} title=$merged',
-        );
-      }
+      if (catalogTitle == entry.title) continue;
+      list[i] = entry.copyWith(title: catalogTitle);
+      changed++;
+      sniffTitleLog(
+        'catalog backfill [$source] url=${_shortUrl(entry.url)} title=$catalogTitle',
+      );
     }
     if (changed > 0) {
       sniffTitleLog('catalog backfill done count=$changed');
@@ -340,18 +377,68 @@ class SniffRegistry extends ChangeNotifier {
     var changed = 0;
     for (var i = 0; i < list.length; i++) {
       final entry = list[i];
-      final merged = _pickBetterTitle(entry.title, cleaned);
-      if (merged != entry.title) {
-        list[i] = entry.copyWith(title: merged);
-        changed++;
-        sniffTitleLog(
-          '  -> filled entry url=${_shortUrl(entry.url)} title=$merged',
-        );
-      }
+      if (entry.title != null && entry.title!.trim().isNotEmpty) continue;
+      list[i] = entry.copyWith(title: cleaned);
+      changed++;
+      sniffTitleLog(
+        '  -> filled entry url=${_shortUrl(entry.url)} title=$cleaned',
+      );
     }
     if (changed > 0) {
       sniffTitleLog('backfill done count=$changed');
       notifyListeners();
+    }
+  }
+
+  void applyTitleForUrl(
+    String tabId,
+    String url,
+    String? title, {
+    String source = 'unknown',
+  }) {
+    final cleaned = _cleanTitle(title);
+    sniffTitleLog(
+      'applyTitle [$source] url=${_shortUrl(url)} raw=${title ?? "(null)"} '
+      'cleaned=${cleaned ?? "(null)"}',
+    );
+    if (cleaned == null) return;
+    final list = _entriesByTab[tabId];
+    if (list == null) return;
+    final index = list.indexWhere((e) => Ev1Url.sameResource(e.url, url));
+    if (index < 0) return;
+    final existing = list[index];
+    final merged = existing.status == SniffStatus.pending
+        ? _pickBetterTitle(existing.title, cleaned)
+        : (existing.title ?? cleaned);
+    if (merged == existing.title) return;
+    list[index] = existing.copyWith(title: merged);
+    notifyListeners();
+  }
+
+  /// Bind 「当前试听」 to the vid in `getPlayToken` / CDN stem prefix
+  /// (`198409541_hash_token` → `198409541`). Do not paint one directory
+  /// heading onto every sniffed file.
+  void applyDomLessonScrape(
+    String tabId,
+    DomLessonScrape scrape, {
+    String source = 'dom-scrape',
+  }) {
+    final playVid = _catalogFor(tabId).lastPlayVid;
+    final playingTitle = scrape.chosen ?? scrape.trial;
+    final byVid = Map<String, String>.from(scrape.byVid);
+    if (playVid != null &&
+        playVid.isNotEmpty &&
+        playingTitle != null &&
+        playingTitle.trim().isNotEmpty) {
+      byVid.putIfAbsent(playVid, () => playingTitle);
+    }
+    for (final entry in scrape.byStem.entries) {
+      final vid = RegExp(r'^(\d{6,})_').firstMatch(entry.key)?.group(1);
+      if (vid == null) continue;
+      byVid.putIfAbsent(vid, () => entry.value);
+    }
+    for (final entry in byVid.entries) {
+      rememberTitleForVid(tabId, entry.key, entry.value, source: source);
     }
   }
 

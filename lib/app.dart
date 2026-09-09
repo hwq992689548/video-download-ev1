@@ -39,9 +39,6 @@ class _VideoDownloadEv1AppState extends ConsumerState<VideoDownloadEv1App> {
           selectedIndex: _index,
           onDestinationSelected: (i) {
             setState(() => _index = i);
-            if (i == 0) {
-              ref.invalidate(videoLibrarySyncProvider);
-            }
           },
           destinations: const [
             NavigationDestination(

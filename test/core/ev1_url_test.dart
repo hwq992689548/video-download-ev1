@@ -12,6 +12,48 @@ void main() {
     expect(Ev1Url.normalizeKey(a), '/video/foo.ev1');
   });
 
+  test('same Baijiayun file matches across sign, host, and mp4/ev2', () {
+    const mp4Play1 =
+        'https://dws4jd-video-bak.baijiayun.com/00-x-upload/video/'
+        '198599077_a41ffdbc5f739978647a2273bc9cbe33_Qf7U5d89.mp4'
+        '?t=6aa16a56&sign=d9195272d0bebf50a2d81eea2c2b1fee'
+        '&uuid=a27b4d57-7f6a-d5ba-dd7d-788e2ebdd7b3';
+    const mp4Play2 =
+        'https://dws4jd-video.baijiayun.com/00-x-upload/video/'
+        '198599077_a41ffdbc5f739978647a2273bc9cbe33_Qf7U5d89.mp4'
+        '?t=6aa16ac1&sign=6c69ba8fa3b7a183302a742facbff133'
+        '&uuid=77153a8a-ad4c-a3d1-d5ad-be41d371c33c';
+    const ev2 =
+        'https://dws4jd-video-bak.baijiayun.com/00-x-upload/video/'
+        '198599077_a41ffdbc5f739978647a2273bc9cbe33_Qf7U5d89_mp4/'
+        '198599077_a41ffdbc5f739978647a2273bc9cbe33_Qf7U5d89.ev2?t=1';
+    const other =
+        'https://dws4jd-video-bak.baijiayun.com/00-x-upload/video/'
+        '318761433_b33beda1dc128af4b64f9ba0c0e93fa2_qANuKKA9.mp4?t=1';
+
+    expect(Ev1Url.sameResource(mp4Play1, mp4Play2), isTrue);
+    expect(Ev1Url.sameResource(mp4Play1, ev2), isTrue);
+    expect(Ev1Url.sameResource(mp4Play1, other), isFalse);
+    expect(
+      Ev1Url.resourceStem(mp4Play1),
+      '198599077_a41ffdbc5f739978647a2273bc9cbe33_Qf7U5d89',
+    );
+  });
+
+  test('SniffRegistry merges reload mp4 into the same sniff entry', () {
+    final r = SniffRegistry();
+    const first =
+        'https://dws4jd-video-bak.baijiayun.com/00-x-upload/video/'
+        '198599077_a41ffdbc5f739978647a2273bc9cbe33_Qf7U5d89.mp4?sign=1';
+    const second =
+        'https://dws4jd-video-bak.baijiayun.com/00-x-upload/video/'
+        '198599077_a41ffdbc5f739978647a2273bc9cbe33_Qf7U5d89.mp4?sign=2';
+    r.register('t', first);
+    r.register('t', second);
+    expect(r.entriesFor('t').length, 1);
+    expect(r.entriesFor('t').first.url, second);
+  });
+
   test('SniffRegistry deduplicates by ev1 path', () {
     final r = SniffRegistry();
     r.register('t', 'https://x.com/a.ev1?sign=1');

@@ -8,6 +8,11 @@ import 'sniff_registry.dart';
 class DownloadFileName {
   DownloadFileName._();
 
+  static final _mediaExt = RegExp(
+    r'\.(mp4|m3u8|flv|ev[12])$',
+    caseSensitive: false,
+  );
+
   static String sanitize(String name) {
     var sanitized = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
     sanitized = sanitized.replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -41,6 +46,37 @@ class DownloadFileName {
       '',
     );
     return '${sanitize(base)}$ext';
+  }
+
+  /// Rename-field stem without the on-disk extension, e.g. `绪论.mp4` → `绪论`.
+  static String forDisplay(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return trimmed;
+    return trimmed.replaceFirst(_mediaExt, '');
+  }
+
+  /// List label with media suffix, e.g. `绪论` + mp4 url → `绪论.mp4`.
+  static String forList({
+    required String name,
+    String? url,
+    String? filePath,
+  }) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return trimmed;
+    if (_mediaExt.hasMatch(trimmed)) return trimmed;
+    return '$trimmed.${_inferredExtension(url: url, filePath: filePath)}';
+  }
+
+  static String _inferredExtension({String? url, String? filePath}) {
+    if (url != null && url.trim().isNotEmpty) {
+      final fromUrl = SniffRegistry.directFileExtension(url);
+      if (fromUrl != null) return fromUrl;
+    }
+    if (filePath != null && filePath.trim().isNotEmpty) {
+      final ext = p.extension(filePath).toLowerCase().replaceFirst('.', '');
+      if (ext == 'mp4' || ext == 'flv' || ext == 'm3u8') return ext;
+    }
+    return 'flv';
   }
 
   static Future<String> uniquePath(

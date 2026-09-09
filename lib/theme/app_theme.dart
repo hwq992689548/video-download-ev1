@@ -35,6 +35,22 @@ abstract final class AppRadii {
   static const button = 8.0;
 }
 
+abstract final class AppText {
+  static const listTitle = TextStyle(
+    fontSize: 16,
+    fontWeight: FontWeight.w500,
+    color: AppColors.textPrimary,
+    height: 1.3,
+  );
+
+  static const listSubtitle = TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w400,
+    color: AppColors.textSecondary,
+    height: 1.3,
+  );
+}
+
 ThemeData buildLightTheme() {
   const textPrimary = TextStyle(
     fontSize: 14,
@@ -94,7 +110,7 @@ ThemeData buildLightTheme() {
       ),
       elevation: 0,
       scrolledUnderElevation: 0,
-      actionsPadding: EdgeInsets.fromLTRB(12, 0, 12, 0),
+      actionsPadding: EdgeInsets.fromLTRB(8, 0, 16, 0),
       iconTheme: IconThemeData(color: AppColors.textPrimary),
       actionsIconTheme: IconThemeData(color: AppColors.textPrimary),
       centerTitle: true,
@@ -267,6 +283,8 @@ ThemeData buildLightTheme() {
       iconColor: AppColors.textPrimary,
       textColor: AppColors.textPrimary,
       tileColor: AppColors.surface,
+      titleTextStyle: AppText.listTitle,
+      subtitleTextStyle: AppText.listSubtitle,
     ),
     bottomSheetTheme: const BottomSheetThemeData(
       backgroundColor: AppColors.surface,
@@ -301,15 +319,17 @@ class AppGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: margin,
-      padding: padding,
-      decoration: BoxDecoration(
+    final content = padding == null
+        ? child
+        : Padding(padding: padding!, child: child);
+    return Padding(
+      padding: margin,
+      child: Material(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadii.card),
+        clipBehavior: Clip.antiAlias,
+        child: content,
       ),
-      clipBehavior: Clip.antiAlias,
-      child: child,
     );
   }
 }

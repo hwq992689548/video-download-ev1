@@ -73,7 +73,8 @@ class VideoRepository {
         ..where((t) => t.id.equals(id)))
       .getSingleOrNull();
 
-  /// Match by normalized .ev1 path (ignores changing sign/t/uuid query params).
+  /// Match by CDN filename stem (`vid_hash_token`), ignoring sign/t/uuid,
+  /// host, and mp4/ev1/ev2/m3u8. Falls back to path when stem is absent.
   Future<VideoRecord?> findByEv1Url(String url) async {
     final key = Ev1Url.normalizeKey(url);
     final rows = await _db.select(_db.videoRecords).get();
@@ -143,6 +144,15 @@ class DownloadTaskRepository {
   Future<void> insert(DownloadTasksCompanion row) =>
       _db.into(_db.downloadTasks).insert(row);
 
+  Future<void> updateSuggestedName(String id, String name) {
+    return (_db.update(_db.downloadTasks)..where((t) => t.id.equals(id))).write(
+      DownloadTasksCompanion(
+        suggestedName: Value(name),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
   Future<void> updateProgress({
     required String id,
     required int bytesDownloaded,
@@ -174,24 +184,38 @@ class RecordedLinkRepository {
   RecordedLinkRepository(this._db);
 
   final AppDatabase _db;
+  Future<void>? _schemaReady;
 
-  Stream<List<RecordedLink>> watchAll() {
-    return (_db.select(_db.recordedLinks)
-          ..orderBy([(t) => OrderingTerm.desc(t.recordedAt)]))
-        .watch();
+  Future<void> _ensureSchema() {
+    return _schemaReady ??= _db.ensureRecordedLinksDisplayName();
   }
 
-  Future<List<RecordedLink>> getAll() {
+  Stream<List<RecordedLink>> watchAll() {
+    return Stream.fromFuture(_ensureSchema()).asyncExpand((_) {
+      return (_db.select(_db.recordedLinks)
+            ..orderBy([(t) => OrderingTerm.desc(t.recordedAt)]))
+          .watch();
+    });
+  }
+
+  Future<List<RecordedLink>> getAll() async {
+    await _ensureSchema();
     return (_db.select(_db.recordedLinks)
           ..orderBy([(t) => OrderingTerm.desc(t.recordedAt)]))
         .get();
   }
 
-  Future<bool> existsByUrl(String url) async {
+  Future<RecordedLink?> findByUrl(String url) async {
+    await _ensureSchema();
     final key = Ev1Url.normalizeKey(url);
     final rows = await _db.select(_db.recordedLinks).get();
-    return rows.any((row) => Ev1Url.normalizeKey(row.url) == key);
+    for (final row in rows) {
+      if (Ev1Url.normalizeKey(row.url) == key) return row;
+    }
+    return null;
   }
+
+  Future<bool> existsByUrl(String url) async => await findByUrl(url) != null;
 
   RecordedLink? findByUrlIn(List<RecordedLink> links, String url) {
     final key = Ev1Url.normalizeKey(url);
@@ -201,12 +225,25 @@ class RecordedLinkRepository {
     return null;
   }
 
-  Future<void> insert(RecordedLinksCompanion row) =>
-      _db.into(_db.recordedLinks).insert(row);
+  Future<void> insert(RecordedLinksCompanion row) async {
+    await _ensureSchema();
+    await _db.into(_db.recordedLinks).insert(row);
+  }
 
-  Future<void> deleteById(String id) => (_db.delete(_db.recordedLinks)
-        ..where((t) => t.id.equals(id)))
-      .go();
+  Future<void> updateDisplayName(String id, String name) async {
+    await _ensureSchema();
+    await (_db.update(_db.recordedLinks)..where((t) => t.id.equals(id))).write(
+      RecordedLinksCompanion(displayName: Value(name)),
+    );
+  }
 
-  Future<void> deleteAll() => _db.delete(_db.recordedLinks).go();
+  Future<void> deleteById(String id) async {
+    await _ensureSchema();
+    await (_db.delete(_db.recordedLinks)..where((t) => t.id.equals(id))).go();
+  }
+
+  Future<void> deleteAll() async {
+    await _ensureSchema();
+    await _db.delete(_db.recordedLinks).go();
+  }
 }

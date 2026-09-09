@@ -18,6 +18,41 @@ void main() {
     );
   });
 
+  test('forDisplay strips the media extension for rename fields', () {
+    expect(DownloadFileName.forDisplay('绪论.mp4'), '绪论');
+    expect(DownloadFileName.forDisplay('课 (1).flv'), '课 (1)');
+    expect(DownloadFileName.forDisplay('政治经济学的研究任务'), '政治经济学的研究任务');
+  });
+
+  test('forList appends mp4, flv or m3u8 when the title has no suffix', () {
+    const mp4Url =
+        'https://dws4jd-video.baijiayun.com/00-x-upload/video/198599077_abc.mp4?t=1';
+    const m3u8Url =
+        'https://dws4jd-video.baijiayun.com/00-x-upload/video/198599078_abc.m3u8?t=1';
+    const ev1Url = 'https://cdn.example.com/video/foo.ev1?sign=1';
+
+    expect(
+      DownloadFileName.forList(name: '第一节 政治经济学的产生和发展', url: mp4Url),
+      '第一节 政治经济学的产生和发展.mp4',
+    );
+    expect(
+      DownloadFileName.forList(name: 'playlist', url: m3u8Url),
+      'playlist.m3u8',
+    );
+    expect(DownloadFileName.forList(name: '加密课', url: ev1Url), '加密课.flv');
+    expect(
+      DownloadFileName.forList(name: '绪论.mp4', url: mp4Url),
+      '绪论.mp4',
+    );
+    expect(
+      DownloadFileName.forList(
+        name: 'lesson',
+        filePath: '/videos/lesson.mp4',
+      ),
+      'lesson.mp4',
+    );
+  });
+
   test('uniquePath adds a suffix when the file already exists', () async {
     final dir = await Directory.systemTemp.createTemp('download_file_name');
     addTearDown(() async {

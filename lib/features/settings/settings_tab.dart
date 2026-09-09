@@ -213,9 +213,10 @@ class SettingsTab extends ConsumerWidget {
 }
 
 const _subtitleStyle = TextStyle(
-  fontSize: 12,
+  fontSize: 14,
   fontWeight: FontWeight.w400,
   color: AppColors.textTertiary,
+  height: 1.3,
 );
 
 class _SettingsGroup extends StatelessWidget {

@@ -22,9 +22,9 @@ class VideoPlayerScreen extends StatefulWidget {
     final file = File(video.filePath);
     if (!await file.exists()) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('文件不存在，可能已被删除')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('文件不存在，可能已被删除')));
       }
       return;
     }
@@ -32,11 +32,18 @@ class VideoPlayerScreen extends StatefulWidget {
     final result = await OpenFilex.open(file.path, type: _mimeType(file.path));
     if (result.type == ResultType.done || !context.mounted) return;
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => VideoPlayerScreen(video: video),
-      ),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => VideoPlayerScreen(video: video)));
+  }
+
+  static Rect _shareOrigin(BuildContext context) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize) {
+      return box.localToGlobal(Offset.zero) & box.size;
+    }
+    final size = MediaQuery.sizeOf(context);
+    return Rect.fromLTWH(0, 0, size.width, size.height / 4);
   }
 
   static String _mimeType(String path) {
@@ -47,20 +54,39 @@ class VideoPlayerScreen extends StatefulWidget {
     return 'video/*';
   }
 
-  static Future<void> shareVideo(BuildContext context, VideoRecord video) async {
+  static Future<void> shareVideo(
+    BuildContext context,
+    VideoRecord video,
+  ) async {
     final file = File(video.filePath);
     if (!await file.exists()) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('文件不存在，可能已被删除')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('文件不存在，可能已被删除')));
       }
       return;
     }
-    await Share.shareXFiles(
-      [XFile(video.filePath, name: video.displayName)],
-      subject: video.displayName,
-    );
+    if (!context.mounted) return;
+    try {
+      await Share.shareXFiles(
+        [
+          XFile(
+            video.filePath,
+            name: video.displayName,
+            mimeType: _mimeType(video.filePath),
+          ),
+        ],
+        subject: video.displayName,
+        sharePositionOrigin: _shareOrigin(context),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('无法分享：$e')));
+      }
+    }
   }
 
   static Future<void> revealInFileManager(
@@ -70,18 +96,18 @@ class VideoPlayerScreen extends StatefulWidget {
     final file = File(video.filePath);
     if (!await file.exists()) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('文件不存在，可能已被删除')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('文件不存在，可能已被删除')));
       }
       return;
     }
 
     final ok = await RevealInFileManager.reveal(video.filePath);
     if (context.mounted && !ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('无法打开文件所在目录')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('无法打开文件所在目录')));
     }
   }
 
@@ -90,9 +116,11 @@ class VideoPlayerScreen extends StatefulWidget {
     VideoRepository repo,
   ) async {
     final file = File(video.filePath);
-    if (await file.exists()) {
-      await file.delete();
-    }
+    try {
+      if (file.existsSync()) {
+        file.deleteSync();
+      }
+    } catch (_) {}
     await repo.deleteById(video.id);
   }
 
@@ -126,7 +154,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () => VideoPlayerScreen.shareVideo(context, widget.video),
+            onPressed: () =>
+                VideoPlayerScreen.shareVideo(context, widget.video),
           ),
           IconButton(
             icon: const Icon(Icons.folder_open),

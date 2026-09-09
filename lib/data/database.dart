@@ -52,6 +52,7 @@ class DownloadTasks extends Table {
 class RecordedLinks extends Table {
   TextColumn get id => text()();
   TextColumn get url => text()();
+  TextColumn get displayName => text().nullable()();
   DateTimeColumn get recordedAt => dateTime()();
 
   @override
@@ -65,7 +66,19 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.connect(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
+
+  Future<void> ensureRecordedLinksDisplayName() async {
+    final columns = await customSelect('PRAGMA table_info(recorded_links)').get();
+    final hasDisplayName = columns.any((row) {
+      final name = row.data['name']?.toString();
+      return name == 'display_name';
+    });
+    if (hasDisplayName) return;
+    await customStatement(
+      'ALTER TABLE recorded_links ADD COLUMN display_name TEXT',
+    );
+  }
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -79,15 +92,23 @@ class AppDatabase extends _$AppDatabase {
           if (from < 4) {
             await m.createTable(recordedLinks);
           }
+          if (from < 5) {
+            await m.addColumn(recordedLinks, recordedLinks.displayName);
+          }
         },
         beforeOpen: (details) async {
           await customStatement('''
             CREATE TABLE IF NOT EXISTS recorded_links (
               id TEXT NOT NULL PRIMARY KEY,
               url TEXT NOT NULL,
+              display_name TEXT,
               recorded_at INTEGER NOT NULL
             )
           ''');
+          // CREATE TABLE IF NOT EXISTS does not alter an existing table.
+          // Devices that created recorded_links before display_name was added
+          // stay on schema 5, so onUpgrade never runs addColumn.
+          await ensureRecordedLinksDisplayName();
         },
       );
 }
