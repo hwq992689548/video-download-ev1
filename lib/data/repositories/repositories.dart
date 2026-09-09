@@ -40,12 +40,11 @@ class VideoRepository {
     final current = await getById(id);
     if (current == null) return;
 
-    final ext = p.extension(current.filePath);
-    var fileName = DownloadFileName.sanitize(name.trim());
+    final fileName = DownloadFileName.withMediaExtension(
+      name,
+      existingPath: current.filePath,
+    );
     if (fileName.isEmpty) return;
-    if (p.extension(fileName).isEmpty && ext.isNotEmpty) {
-      fileName = '$fileName$ext';
-    }
 
     var newPath = current.filePath;
     final file = File(current.filePath);

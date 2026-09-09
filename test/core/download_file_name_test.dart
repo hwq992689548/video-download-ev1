@@ -21,7 +21,32 @@ void main() {
   test('forDisplay strips the media extension for rename fields', () {
     expect(DownloadFileName.forDisplay('绪论.mp4'), '绪论');
     expect(DownloadFileName.forDisplay('课 (1).flv'), '课 (1)');
+    expect(DownloadFileName.forDisplay('1.1 引言.mp4'), '1.1 引言');
     expect(DownloadFileName.forDisplay('政治经济学的研究任务'), '政治经济学的研究任务');
+  });
+
+  test('withMediaExtension keeps mp4 when the stem contains a dot', () {
+    expect(
+      DownloadFileName.withMediaExtension(
+        '1.1 引言',
+        existingPath: '/videos/1.1 引言.mp4',
+      ),
+      '1.1 引言.mp4',
+    );
+    expect(
+      DownloadFileName.withMediaExtension(
+        '1.1 引言.mp4',
+        existingPath: '/videos/old.mp4',
+      ),
+      '1.1 引言.mp4',
+    );
+    expect(
+      DownloadFileName.withMediaExtension(
+        '加密课',
+        existingPath: r'D:\EV1Downloads\videos\加密课.flv',
+      ),
+      '加密课.flv',
+    );
   });
 
   test('forList appends mp4, flv or m3u8 when the title has no suffix', () {

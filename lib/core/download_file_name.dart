@@ -55,6 +55,16 @@ class DownloadFileName {
     return trimmed.replaceFirst(_mediaExt, '');
   }
 
+  /// Re-attach the stored media suffix. `package:path`'s `extension()` treats
+  /// `1.1 引言` as having extension `.1 引言`, so do not use it for stems.
+  static String withMediaExtension(String name, {required String existingPath}) {
+    final sanitized = sanitize(name.trim());
+    if (_mediaExt.hasMatch(sanitized)) return sanitized;
+    final match = _mediaExt.firstMatch(existingPath);
+    final ext = match?.group(0) ?? '';
+    return ext.isEmpty ? sanitized : '$sanitized$ext';
+  }
+
   /// List label with media suffix, e.g. `绪论` + mp4 url → `绪论.mp4`.
   static String forList({
     required String name,

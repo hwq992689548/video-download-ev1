@@ -92,9 +92,9 @@ class AppDatabase extends _$AppDatabase {
           if (from < 4) {
             await m.createTable(recordedLinks);
           }
-          if (from < 5) {
-            await m.addColumn(recordedLinks, recordedLinks.displayName);
-          }
+          // createTable uses the current definition (already has display_name).
+          // addColumn would duplicate the column for anyone upgrading from < 4.
+          await ensureRecordedLinksDisplayName();
         },
         beforeOpen: (details) async {
           await customStatement('''
