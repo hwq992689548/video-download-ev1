@@ -31,6 +31,15 @@ const mobileViewportScript = '''
 })();
 ''';
 
+String desktopChromeUserAgent() {
+  return 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+}
+
+String browserUserAgent({required bool useMobileMode}) {
+  return useMobileMode ? mobileUserAgent() : desktopChromeUserAgent();
+}
+
 InAppWebViewSettings browserWebViewSettings({required bool useMobileMode}) {
   return InAppWebViewSettings(
     javaScriptEnabled: true,
@@ -40,7 +49,7 @@ InAppWebViewSettings browserWebViewSettings({required bool useMobileMode}) {
     useShouldInterceptRequest: true,
     allowsInlineMediaPlayback: true,
     mediaPlaybackRequiresUserGesture: false,
-    userAgent: useMobileMode ? mobileUserAgent() : null,
+    userAgent: browserUserAgent(useMobileMode: useMobileMode),
     preferredContentMode: useMobileMode
         ? UserPreferredContentMode.MOBILE
         : UserPreferredContentMode.RECOMMENDED,

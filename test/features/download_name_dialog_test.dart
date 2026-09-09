@@ -27,7 +27,7 @@ void main() {
 
   testWidgets('shows current name as text and placeholder', (tester) async {
     await openDialog(tester);
-    expect(find.text('下载文件名'), findsOneWidget);
+    expect(find.text('保存文件名称'), findsOneWidget);
     expect(find.text('第1讲 绪论'), findsWidgets);
     expect(find.text('取消'), findsOneWidget);
     expect(find.text('立即下载'), findsOneWidget);
@@ -105,5 +105,14 @@ void main() {
     await tester.tap(find.text('立即下载'));
     await tester.pumpAndSettle();
     expect(result, '第1讲 绪论');
+  });
+
+  testWidgets('clear button empties the name field', (tester) async {
+    await openDialog(tester);
+    expect(find.text('第1讲 绪论'), findsWidgets);
+    await tester.tap(find.byTooltip('清除'));
+    await tester.pump();
+    expect(tester.widget<TextField>(find.byType(TextField)).controller?.text, isEmpty);
+    expect(find.byTooltip('清除'), findsNothing);
   });
 }

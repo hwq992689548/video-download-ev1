@@ -43,9 +43,11 @@ Future<DownloadStoragePaths> resolveDownloadStoragePaths({
   String? executableDir,
   Future<Directory> Function()? documentsDir,
   Future<Directory> Function()? temporaryDir,
+  Future<Directory> Function()? supportDir,
 }) async {
   final exeDir = executableDir ?? p.dirname(Platform.resolvedExecutable);
-  final customRoot = await _readCustomRoot(exeDir);
+  final customRoot =
+      await _readPreferredCustomRoot(exeDir: exeDir, supportDir: supportDir);
 
   if (customRoot != null) {
     final videosDir = Directory(p.join(customRoot, 'videos'));
@@ -77,8 +79,67 @@ Future<DownloadStoragePaths> resolveDownloadStoragePaths({
   return DownloadStoragePaths(videosDir: videosDir, tempDir: tempDir);
 }
 
-Future<String?> _readCustomRoot(String executableDir) async {
-  final file = File(p.join(executableDir, downloadPathConfigFileName));
+Future<String?> _readPreferredCustomRoot({
+  required String exeDir,
+  Future<Directory> Function()? supportDir,
+}) async {
+  final fromSupport = await _readSupportCustomRoot(supportDir);
+  if (fromSupport != null) return fromSupport;
+  return _readCustomRoot(exeDir);
+}
+
+Future<String?> _readSupportCustomRoot(
+  Future<Directory> Function()? supportDir,
+) async {
+  try {
+    final dir = supportDir != null
+        ? await supportDir()
+        : await getApplicationSupportDirectory();
+    return _readCustomRoot(dir.path);
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<String?> _readCustomRoot(String directory) async {
+  final file = File(p.join(directory, downloadPathConfigFileName));
   if (!await file.exists()) return null;
   return parseCustomDownloadRoot(await file.readAsString());
+}
+
+/// Persists [root] as the custom download directory.
+///
+/// An empty or null [root] clears the custom path and restores the default.
+Future<void> saveCustomDownloadRoot(
+  String? root, {
+  String? executableDir,
+  Future<Directory> Function()? supportDir,
+}) async {
+  final trimmed = root?.trim();
+  final contents = (trimmed == null || trimmed.isEmpty)
+      ? null
+      : '$trimmed\n';
+
+  try {
+    final dir = supportDir != null
+        ? await supportDir()
+        : await getApplicationSupportDirectory();
+    await dir.create(recursive: true);
+    final file = File(p.join(dir.path, downloadPathConfigFileName));
+    if (contents == null) {
+      if (await file.exists()) await file.delete();
+    } else {
+      await file.writeAsString(contents);
+    }
+  } catch (_) {}
+
+  try {
+    final exeDir = executableDir ?? p.dirname(Platform.resolvedExecutable);
+    final file = File(p.join(exeDir, downloadPathConfigFileName));
+    if (contents == null) {
+      if (await file.exists()) await file.delete();
+    } else {
+      await file.writeAsString(contents);
+    }
+  } catch (_) {}
 }

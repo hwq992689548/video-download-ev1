@@ -1,5 +1,9 @@
-import 'package:drift/drift.dart';
+import 'dart:io';
 
+import 'package:drift/drift.dart';
+import 'package:path/path.dart' as p;
+
+import '../../core/download_file_name.dart';
 import '../../core/ev1_url.dart';
 import '../database.dart';
 
@@ -14,6 +18,12 @@ class VideoRepository {
         .watch();
   }
 
+  Future<List<VideoRecord>> getAll() {
+    return (_db.select(_db.videoRecords)
+          ..orderBy([(t) => OrderingTerm.desc(t.downloadedAt)]))
+        .get();
+  }
+
   Stream<List<VideoRecord>> search(String query) {
     final q = query.trim().toLowerCase();
     if (q.isEmpty) return watchAll();
@@ -26,9 +36,38 @@ class VideoRepository {
   Future<void> insert(VideoRecordsCompanion row) =>
       _db.into(_db.videoRecords).insert(row);
 
-  Future<void> rename(String id, String name) => (_db.update(_db.videoRecords)
-        ..where((t) => t.id.equals(id)))
-      .write(VideoRecordsCompanion(displayName: Value(name)));
+  Future<void> rename(String id, String name) async {
+    final current = await getById(id);
+    if (current == null) return;
+
+    final ext = p.extension(current.filePath);
+    var fileName = DownloadFileName.sanitize(name.trim());
+    if (fileName.isEmpty) return;
+    if (p.extension(fileName).isEmpty && ext.isNotEmpty) {
+      fileName = '$fileName$ext';
+    }
+
+    var newPath = current.filePath;
+    final file = File(current.filePath);
+    if (await file.exists()) {
+      newPath = await DownloadFileName.uniquePath(
+        p.dirname(current.filePath),
+        fileName: fileName,
+        ignorePath: current.filePath,
+      );
+      if (p.normalize(newPath).toLowerCase() !=
+          p.normalize(current.filePath).toLowerCase()) {
+        await file.rename(newPath);
+      }
+    }
+
+    await (_db.update(_db.videoRecords)..where((t) => t.id.equals(id))).write(
+      VideoRecordsCompanion(
+        displayName: Value(p.basename(newPath)),
+        filePath: Value(newPath),
+      ),
+    );
+  }
 
   Future<VideoRecord?> getById(String id) => (_db.select(_db.videoRecords)
         ..where((t) => t.id.equals(id)))
@@ -86,6 +125,13 @@ class DownloadTaskRepository {
           ..where((t) => t.status.isNotIn(['completed']))
           ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)]))
         .watch();
+  }
+
+  Future<List<DownloadTask>> getPending() {
+    return (_db.select(_db.downloadTasks)
+          ..where((t) => t.status.isNotIn(['completed']))
+          ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)]))
+        .get();
   }
 
   Future<List<DownloadTask>> getResumable() {

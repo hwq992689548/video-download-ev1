@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/database.dart';
 import '../data/repositories/repositories.dart';
 import 'download_manager.dart';
+import 'download_paths.dart';
 import 'baijiayun_converter.dart';
 import 'sniff_registry.dart';
+import 'video_library_sync.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
@@ -38,6 +40,11 @@ final downloadTaskRepositoryProvider = Provider<DownloadTaskRepository>((ref) {
   return DownloadTaskRepository(ref.watch(databaseProvider));
 });
 
+final downloadStoragePathsProvider =
+    FutureProvider<DownloadStoragePaths>((ref) {
+  return resolveDownloadStoragePaths();
+});
+
 final downloadManagerProvider = FutureProvider<DownloadManager>((ref) async {
   return createDownloadManager(
     dio: ref.watch(dioProvider),
@@ -45,6 +52,16 @@ final downloadManagerProvider = FutureProvider<DownloadManager>((ref) async {
     videos: ref.watch(videoRepositoryProvider),
     tasks: ref.watch(downloadTaskRepositoryProvider),
   );
+});
+
+final videoLibrarySyncProvider = FutureProvider<void>((ref) async {
+  final paths = await ref.watch(downloadStoragePathsProvider.future);
+  final tasks = await ref.watch(downloadTaskRepositoryProvider).getPending();
+  await VideoLibrarySync(
+    videos: ref.watch(videoRepositoryProvider),
+    videosDir: paths.videosDir,
+    reservedVideoIds: {for (final task in tasks) task.videoId},
+  ).reconcile();
 });
 
 final allVideosStreamProvider = StreamProvider<List<VideoRecord>>((ref) {

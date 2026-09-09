@@ -15,9 +15,6 @@ class AddressBar extends StatefulWidget {
     required this.onBack,
     required this.onForward,
     required this.onRefresh,
-    required this.onBookmarks,
-    required this.onSniff,
-    required this.sniffCount,
   });
 
   final String currentUrl;
@@ -27,9 +24,6 @@ class AddressBar extends StatefulWidget {
   final VoidCallback onBack;
   final VoidCallback onForward;
   final VoidCallback onRefresh;
-  final VoidCallback onBookmarks;
-  final VoidCallback onSniff;
-  final int sniffCount;
 
   @override
   State<AddressBar> createState() => _AddressBarState();
@@ -116,31 +110,6 @@ class _AddressBarState extends State<AddressBar> {
     );
   }
 
-  Widget _sniffButton({bool compact = false}) {
-    final button = FilledButton(
-      onPressed: widget.onSniff,
-      style: FilledButton.styleFrom(
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 8 : 12,
-          vertical: compact ? 6 : 8,
-        ),
-        minimumSize: Size.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-      child: Text(
-        '探测链接',
-        style: TextStyle(fontSize: compact ? 12 : 14, fontWeight: FontWeight.w500),
-      ),
-    );
-
-    return Badge(
-      isLabelVisible: widget.sniffCount > 0,
-      backgroundColor: AppColors.error,
-      label: Text('${widget.sniffCount}'),
-      child: button,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final compact = shouldUseMobileBrowserMode(context);
@@ -207,12 +176,6 @@ class _AddressBarState extends State<AddressBar> {
               icon: Icons.refresh,
               onPressed: widget.onRefresh,
             ),
-            IconButton(
-              icon: const Icon(Icons.bookmarks_outlined),
-              tooltip: '书签',
-              onPressed: widget.onBookmarks,
-            ),
-            _sniffButton(),
           ],
         ),
         Row(

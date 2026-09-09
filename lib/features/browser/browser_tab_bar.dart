@@ -23,7 +23,7 @@ class BrowserTabBar extends ConsumerWidget {
     final store = ref.watch(browserTabStoreProvider);
     final tabs = store.tabs;
     final compact = shouldUseMobileBrowserMode(context);
-    final showSniff = compact && onSniff != null;
+    final showSniff = onSniff != null;
 
     return SizedBox(
       height: compact ? 40 : 44,
@@ -68,21 +68,29 @@ class BrowserTabBar extends ConsumerWidget {
           ),
           if (showSniff)
             Padding(
-              padding: const EdgeInsets.only(left: 4, right: 8),
+              padding: EdgeInsets.fromLTRB(4, compact ? 4 : 6, 8, compact ? 4 : 6),
               child: Badge(
                 isLabelVisible: sniffCount > 0,
                 backgroundColor: AppColors.error,
                 label: Text('$sniffCount'),
-                child: FilledButton(
-                  onPressed: onSniff,
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: const Text(
-                    '探测链接',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                child: SizedBox(
+                  height: 32,
+                  child: FilledButton(
+                    onPressed: onSniff,
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    child: const Text(
+                      '探测链接',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        height: 1,
+                      ),
+                    ),
                   ),
                 ),
               ),

@@ -62,6 +62,8 @@ class RecordedLinks extends Table {
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
+  AppDatabase.connect(super.e);
+
   @override
   int get schemaVersion => 4;
 

@@ -1,9 +1,13 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
+import 'app_file_log.dart';
 
 void sniffTitleLog(String message) {
-  debugPrint('[SniffTitle] $message');
+  AppFileLog.write('SniffTitle', message);
+}
+
+void sniffLog(String tag, String message) {
+  AppFileLog.write(tag, message);
 }
 
 /// Parses title payload from injected JS (plain string or JSON debug object).

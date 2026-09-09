@@ -71,6 +71,20 @@ void main() {
         ),
         '企业开展国际市场营销的动因',
       );
+      expect(
+        catalog.lookupTitleForUrl(
+          'https://dws4jd-video-bak.baijiayun.com/00-x-upload/video/'
+          '185726409_foo.mp4?t=1',
+        ),
+        '企业开展国际市场营销的动因',
+      );
+      expect(
+        catalog.lookupTitleForUrl(
+          'https://dws4jd-video-bak.baijiayun.com/00-x-upload/video/'
+          '185726409_foo.mp4?t=1',
+        ),
+        '企业开展国际市场营销的动因',
+      );
     });
 
     test('rejects price-like titles', () {

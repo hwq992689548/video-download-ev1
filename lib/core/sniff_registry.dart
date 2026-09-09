@@ -82,6 +82,48 @@ class SniffRegistry extends ChangeNotifier {
     return path.contains('.ev1') || path.contains('.ev2');
   }
 
+  /// H5 playable mp4 / m3u8 from Baijiayun VOD CDN (not ads/thumbnails).
+  static bool isBaijiayunDirectUrl(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null || uri.host.isEmpty) return false;
+    if (!uri.host.toLowerCase().contains('baijiayun.com')) return false;
+    return RegExp(
+      r'/video/\d{6,}_[^/?#]+\.(mp4|m3u8)$',
+      caseSensitive: false,
+    ).hasMatch(uri.path);
+  }
+
+  static bool isBaijiayunMp4Url(String url) => isBaijiayunDirectUrl(url);
+
+  static String? directFileExtension(String url) {
+    if (!isBaijiayunDirectUrl(url)) return null;
+    final path = Uri.tryParse(url.trim())?.path.toLowerCase() ?? '';
+    if (path.endsWith('.m3u8')) return 'm3u8';
+    return 'mp4';
+  }
+
+  static bool isSniffableUrl(String url) =>
+      isEv1Url(url) || isBaijiayunDirectUrl(url);
+
+  static final _evUrlInText = RegExp(
+    r'''https?://[^\s"'<>\\]+?\.ev[12](?:\?[^\s"'<>\\]*)?''',
+    caseSensitive: false,
+  );
+
+  /// Pulls .ev1 / .ev2 URLs out of JSON or escaped response bodies.
+  static List<String> extractUrlsFromText(String text) {
+    if (text.isEmpty) return const [];
+    final decoded = text.replaceAll(r'\/', '/');
+    final seen = <String>{};
+    final urls = <String>[];
+    for (final match in _evUrlInText.allMatches(decoded)) {
+      final url = match.group(0);
+      if (url == null || !seen.add(url)) continue;
+      urls.add(url);
+    }
+    return urls;
+  }
+
   List<SniffEntry> entriesFor(String tabId) =>
       List.unmodifiable(_entriesByTab[tabId] ?? const []);
 
@@ -89,16 +131,33 @@ class SniffRegistry extends ChangeNotifier {
       entriesFor(tabId).where((e) => e.status == SniffStatus.pending).length;
 
   void register(String tabId, String url, {String? title, String source = 'unknown'}) {
-    if (!isEv1Url(url)) return;
+    if (!isSniffableUrl(url)) return;
     final normalized = url.trim();
     final cleanedCatalog = lookupCatalogTitle(tabId, normalized);
     final cleanedTitle = _pickBetterTitle(_cleanTitle(title), cleanedCatalog);
     final list = _entriesByTab.putIfAbsent(tabId, () => []);
+    final vid = BeegoCatalog.extractVidFromUrl(normalized);
+    if (isBaijiayunDirectUrl(normalized) && vid != null) {
+      final hasEv = list.any(
+        (e) => isEv1Url(e.url) && BeegoCatalog.extractVidFromUrl(e.url) == vid,
+      );
+      if (hasEv) return;
+    }
+    if (isEv1Url(normalized) && vid != null) {
+      list.removeWhere(
+        (e) =>
+            isBaijiayunDirectUrl(e.url) &&
+            BeegoCatalog.extractVidFromUrl(e.url) == vid &&
+            e.status == SniffStatus.pending,
+      );
+    }
     final index = list.indexWhere((e) => Ev1Url.sameResource(e.url, normalized));
     if (index >= 0) {
       // Refresh signed URL while keeping download state.
       final existing = list[index];
-      final mergedTitle = _pickBetterTitle(existing.title, cleanedTitle);
+      final mergedTitle = existing.status == SniffStatus.pending
+          ? _pickBetterTitle(existing.title, cleanedTitle)
+          : (existing.title ?? cleanedTitle);
       sniffTitleLog(
         'register/update [$source] tab=$tabId\n'
         '  rawTitle=${title ?? "(null)"}\n'
@@ -262,7 +321,10 @@ class SniffRegistry extends ChangeNotifier {
     final segment = uri?.pathSegments.isNotEmpty == true
         ? uri!.pathSegments.last
         : '未知视频';
-    return segment.replaceAll(RegExp(r'\.ev[12]$', caseSensitive: false), '');
+    return segment.replaceAll(
+      RegExp(r'\.(ev[12]|mp4|m3u8)$', caseSensitive: false),
+      '',
+    );
   }
 
   void backfillMissingTitles(String tabId, String? title, {String source = 'unknown'}) {
@@ -299,6 +361,7 @@ class SniffRegistry extends ChangeNotifier {
     SniffStatus? status,
     double? progress,
     String? error,
+    String? title,
   }) {
     final list = _entriesByTab[tabId];
     if (list == null) return;
@@ -309,6 +372,7 @@ class SniffRegistry extends ChangeNotifier {
       status: status,
       progress: progress,
       error: error,
+      title: title,
     );
     notifyListeners();
   }

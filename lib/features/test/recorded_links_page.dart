@@ -191,33 +191,40 @@ class _RecordedLinkTileState extends ConsumerState<_RecordedLinkTile> {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      title: Text(
-        widget.link.url,
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 13),
-      ),
-      subtitle: Text('记录于 $_recordedAtLabel'),
-      trailing: _downloading
-          ? const SizedBox(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.link.url,
+            style: const TextStyle(fontSize: 13),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '记录于 $_recordedAtLabel',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 10),
+          if (_downloading)
+            const SizedBox(
               width: 28,
               height: 28,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
-          : Row(
-              mainAxisSize: MainAxisSize.min,
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 OutlinedButton(
                   onPressed: _copy,
                   child: const Text('复制'),
                 ),
-                const SizedBox(width: 8),
                 FilledButton(
                   onPressed: _download,
                   child: const Text('下载'),
                 ),
-                const SizedBox(width: 8),
                 OutlinedButton(
                   onPressed: _delete,
                   style: OutlinedButton.styleFrom(
@@ -227,6 +234,8 @@ class _RecordedLinkTileState extends ConsumerState<_RecordedLinkTile> {
                 ),
               ],
             ),
+        ],
+      ),
     );
   }
 }

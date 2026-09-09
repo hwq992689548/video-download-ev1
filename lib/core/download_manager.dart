@@ -6,8 +6,10 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import 'baijiayun_converter.dart';
+import 'download_file_name.dart';
 import 'download_paths.dart';
 import 'resumable_download.dart';
+import 'sniff_registry.dart';
 import '../data/database.dart';
 import '../data/repositories/repositories.dart';
 
@@ -185,8 +187,10 @@ class DownloadManager {
     required String videoId,
   }) async {
     final tmpFlvPath = p.join(_tempDir.path, '$jobId.flv.tmp');
-    final finalPath = p.join(_videosDir.path, '$videoId.flv');
-    for (final path in [rawPath, tmpFlvPath, finalPath]) {
+    final finalFlv = p.join(_videosDir.path, '$videoId.flv');
+    final finalMp4 = p.join(_videosDir.path, '$videoId.mp4');
+    final finalM3u8 = p.join(_videosDir.path, '$videoId.m3u8');
+    for (final path in [rawPath, tmpFlvPath, finalFlv, finalMp4, finalM3u8]) {
       final file = File(path);
       if (await file.exists()) await file.delete();
     }
@@ -236,8 +240,14 @@ class DownloadManager {
   }
 
   Future<void> _runJob(_QueuedJob job) async {
+    final directExt = SniffRegistry.directFileExtension(job.url);
+    final isDirect = directExt != null;
     final tmpFlvPath = p.join(_tempDir.path, '${job.id}.flv.tmp');
-    final finalPath = p.join(_videosDir.path, '${job.videoId}.flv');
+    final displayName = DownloadFileName.fromSuggestion(
+      url: job.url,
+      suggested: job.suggestedName,
+    );
+    var finalPath = p.join(_videosDir.path, displayName);
     final cancelToken = CancelToken();
 
     void emit(DownloadJobStatus status, {double progress = 0, String? error}) {
@@ -337,61 +347,70 @@ class DownloadManager {
         );
       }
 
-      await _tasks.updateProgress(
-        id: job.id,
-        bytesDownloaded: rawSizeAfterDownload,
-        totalBytes: knownTotal,
-        status: 'converting',
+      finalPath = await DownloadFileName.uniquePath(
+        _videosDir.path,
+        fileName: displayName,
       );
-      emit(DownloadJobStatus.converting, progress: 1);
 
-      try {
-        await _converter.convert(
-          inputPath: job.rawPath,
-          outputPath: tmpFlvPath,
-          sourceUrl: job.url,
+      if (isDirect) {
+        await File(job.rawPath).copy(finalPath);
+      } else {
+        await _tasks.updateProgress(
+          id: job.id,
+          bytesDownloaded: rawSizeAfterDownload,
+          totalBytes: knownTotal,
+          status: 'converting',
         );
-      } catch (e) {
-        if (_isCancelled(job.id)) return;
-        final message = e.toString();
-        if (message.contains('not valid FLV') ||
-            message.contains('Download incomplete')) {
-          await _deleteIfExists(job.rawPath);
-          await _tasks.updateProgress(
-            id: job.id,
-            bytesDownloaded: 0,
-            totalBytes: knownTotal,
-            status: 'failed',
-            error: message.contains('Download incomplete')
-                ? '下载未完成或文件损坏，请点「继续」重新下载'
-                : '解密失败，文件可能已损坏，请点「继续」重新下载',
+        emit(DownloadJobStatus.converting, progress: 1);
+
+        try {
+          await _converter.convert(
+            inputPath: job.rawPath,
+            outputPath: tmpFlvPath,
+            sourceUrl: job.url,
           );
-          job.onUpdate?.call(DownloadJobState(
-            id: job.id,
-            url: job.url,
-            status: DownloadJobStatus.failed,
-            error: message.contains('Download incomplete')
-                ? '下载未完成或文件损坏，请点「继续」重新下载'
-                : '解密失败，文件可能已损坏，请点「继续」重新下载',
-          ));
-          await _deleteIfExists(finalPath);
-          await _deleteIfExists(tmpFlvPath);
+        } catch (e) {
+          if (_isCancelled(job.id)) return;
+          final message = e.toString();
+          if (message.contains('not valid FLV') ||
+              message.contains('Download incomplete')) {
+            await _deleteIfExists(job.rawPath);
+            await _tasks.updateProgress(
+              id: job.id,
+              bytesDownloaded: 0,
+              totalBytes: knownTotal,
+              status: 'failed',
+              error: message.contains('Download incomplete')
+                  ? '下载未完成或文件损坏，请点「继续」重新下载'
+                  : '解密失败，文件可能已损坏，请点「继续」重新下载',
+            );
+            job.onUpdate?.call(DownloadJobState(
+              id: job.id,
+              url: job.url,
+              status: DownloadJobStatus.failed,
+              error: message.contains('Download incomplete')
+                  ? '下载未完成或文件损坏，请点「继续」重新下载'
+                  : '解密失败，文件可能已损坏，请点「继续」重新下载',
+            ));
+            await _deleteIfExists(finalPath);
+            await _deleteIfExists(tmpFlvPath);
+            return;
+          }
+          await _markConvertFailed(job, tmpFlvPath, finalPath, error: e.toString());
           return;
         }
-        await _markConvertFailed(job, tmpFlvPath, finalPath, error: e.toString());
-        return;
+
+        if (_isCancelled(job.id) || cancelToken.isCancelled) return;
+
+        await File(tmpFlvPath).copy(finalPath);
       }
-
-      if (_isCancelled(job.id) || cancelToken.isCancelled) return;
-
-      await File(tmpFlvPath).copy(finalPath);
       final size = await File(finalPath).length();
-      final displayName = _displayName(job.url, job.suggestedName);
+      final savedName = p.basename(finalPath);
 
       await _videos.insert(
         VideoRecordsCompanion.insert(
           id: job.videoId,
-          displayName: displayName,
+          displayName: savedName,
           filePath: finalPath,
           sourceUrl: job.url,
           fileSizeBytes: size,
@@ -630,27 +649,6 @@ class DownloadManager {
     return isRetryableDownloadError(error);
   }
 
-  String _displayName(String url, String? suggested) {
-    if (suggested != null && suggested.trim().isNotEmpty) {
-      final name = _sanitizeFileName(suggested.trim());
-      return name.toLowerCase().endsWith('.flv') ? name : '$name.flv';
-    }
-    final uri = Uri.tryParse(url);
-    final segment = uri?.pathSegments.isNotEmpty == true
-        ? uri!.pathSegments.last
-        : 'video';
-    final base = segment.replaceAll(RegExp(r'\.ev[12]$', caseSensitive: false), '');
-    return '$base.flv';
-  }
-
-  String _sanitizeFileName(String name) {
-    var sanitized = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-    sanitized = sanitized.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (sanitized.length > 120) {
-      sanitized = sanitized.substring(0, 120).trim();
-    }
-    return sanitized.isEmpty ? 'video' : sanitized;
-  }
 }
 
 class _QueuedJob {

@@ -67,6 +67,63 @@ C:\\should-not-use
       expect(await paths.tempDir.exists(), isTrue);
     });
 
+    test('prefers app-support download_path.txt over exe sidecar', () async {
+      final exeDir = Directory(p.join(tmp.path, 'bundle'));
+      final support = Directory(p.join(tmp.path, 'support'));
+      await exeDir.create(recursive: true);
+      await support.create(recursive: true);
+      await File(p.join(exeDir.path, 'download_path.txt')).writeAsString(
+        p.join(tmp.path, 'from-exe'),
+      );
+      await File(p.join(support.path, 'download_path.txt')).writeAsString(
+        p.join(tmp.path, 'from-support'),
+      );
+
+      final paths = await resolveDownloadStoragePaths(
+        executableDir: exeDir.path,
+        documentsDir: () async => Directory(p.join(tmp.path, 'Documents')),
+        temporaryDir: () async => Directory(p.join(tmp.path, 'Temp')),
+        supportDir: () async => support,
+      );
+
+      expect(paths.customRoot, p.join(tmp.path, 'from-support'));
+      expect(paths.videosDir.path, p.join(tmp.path, 'from-support', 'videos'));
+    });
+
+    test('saveCustomDownloadRoot writes support and exe configs', () async {
+      final exeDir = Directory(p.join(tmp.path, 'bundle'));
+      final support = Directory(p.join(tmp.path, 'support'));
+      await exeDir.create(recursive: true);
+
+      await saveCustomDownloadRoot(
+        p.join(tmp.path, 'ui-set'),
+        executableDir: exeDir.path,
+        supportDir: () async => support,
+      );
+
+      expect(
+        parseCustomDownloadRoot(
+          await File(p.join(support.path, 'download_path.txt')).readAsString(),
+        ),
+        p.join(tmp.path, 'ui-set'),
+      );
+      expect(
+        parseCustomDownloadRoot(
+          await File(p.join(exeDir.path, 'download_path.txt')).readAsString(),
+        ),
+        p.join(tmp.path, 'ui-set'),
+      );
+
+      await saveCustomDownloadRoot(
+        null,
+        executableDir: exeDir.path,
+        supportDir: () async => support,
+      );
+
+      expect(await File(p.join(support.path, 'download_path.txt')).exists(), isFalse);
+      expect(await File(p.join(exeDir.path, 'download_path.txt')).exists(), isFalse);
+    });
+
     test('falls back to Documents/videos and system temp', () async {
       final exeDir = Directory(p.join(tmp.path, 'bundle'));
       await exeDir.create(recursive: true);

@@ -2,14 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/download_paths.dart';
 import '../../core/providers.dart';
-import '../../core/reveal_in_file_manager.dart';
 import '../../data/database.dart';
 import '../../data/repositories/repositories.dart';
 import '../../theme/app_theme.dart';
-import '../test/recorded_links_page.dart';
-import '../test/test_download_page.dart';
 import 'rename_dialog.dart';
 import 'video_player_screen.dart';
 
@@ -30,26 +26,12 @@ class _DownloadsTabState extends ConsumerState<DownloadsTab> {
     super.dispose();
   }
 
-  Future<void> _openDownloadDirectory() async {
-    final paths = await resolveDownloadStoragePaths();
-    final ok = await RevealInFileManager.openDirectory(paths.videosDir.path);
-    if (!mounted) return;
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('无法打开下载目录')),
-      );
-    }
-  }
-
-  void _openPage(Widget page) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
-  }
-
   @override
   Widget build(BuildContext context) {
     final repo = ref.watch(videoRepositoryProvider);
     final taskRepo = ref.watch(downloadTaskRepositoryProvider);
     final managerAsync = ref.watch(downloadManagerProvider);
+    final sync = ref.watch(videoLibrarySyncProvider);
     final videosStream =
         _query.isEmpty ? repo.watchAll() : repo.search(_query);
     final pendingStream = taskRepo.watchPending();
@@ -63,35 +45,11 @@ class _DownloadsTabState extends ConsumerState<DownloadsTab> {
             bottom: false,
             child: SizedBox(
               height: kToolbarHeight,
-              child: Row(
-                children: [
-                  const SizedBox(width: 48),
-                  Expanded(
-                    child: Text(
-                      '视频列表',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).appBarTheme.titleTextStyle,
-                    ),
-                  ),
-                  PopupMenuButton<String>(
-                    tooltip: '更多',
-                    onSelected: (value) {
-                      switch (value) {
-                        case 'links':
-                          _openPage(const RecordedLinksPage());
-                        case 'test':
-                          _openPage(const TestDownloadPage());
-                        case 'folder':
-                          _openDownloadDirectory();
-                      }
-                    },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(value: 'links', child: Text('链接记录')),
-                      PopupMenuItem(value: 'test', child: Text('下载测试')),
-                      PopupMenuItem(value: 'folder', child: Text('下载目录')),
-                    ],
-                  ),
-                ],
+              child: Center(
+                child: Text(
+                  '视频列表',
+                  style: Theme.of(context).appBarTheme.titleTextStyle,
+                ),
               ),
             ),
           ),
@@ -130,6 +88,9 @@ class _DownloadsTabState extends ConsumerState<DownloadsTab> {
                     return const Center(child: CircularProgressIndicator());
                   }
                   final videos = snapshot.data ?? [];
+                  if (sync.isLoading && pending.isEmpty && videos.isEmpty) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
                   if (pending.isEmpty && videos.isEmpty) {
                     return Center(
                       child: Text(
@@ -421,13 +382,7 @@ class VideoListTile extends ConsumerWidget {
         '下载成功 · ${_formatSize(video.fileSizeBytes)} · $date',
         style: Theme.of(context).textTheme.bodySmall,
       ),
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => VideoPlayerScreen(video: video),
-          ),
-        );
-      },
+      onTap: () => VideoPlayerScreen.playWithSystemPlayer(context, video),
       onLongPress: () => _rename(context, repo),
       trailing: PopupMenuButton<String>(
         tooltip: '操作',

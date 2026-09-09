@@ -1,7 +1,10 @@
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import '../../core/ev1_url.dart';
 import '../../core/sniff_registry.dart';
 import '../../core/sniff_title_log.dart';
 import 'mobile_browser_config.dart';
@@ -32,6 +35,15 @@ class WebViewPageState extends State<WebViewPage> {
   InAppWebViewController? _controller;
   bool _canGoBack = false;
   bool _canGoForward = false;
+  String? _sniffJs;
+
+  @override
+  void initState() {
+    super.initState();
+    rootBundle.loadString('assets/injected_sniff.js').then((js) {
+      if (mounted) setState(() => _sniffJs = js);
+    });
+  }
 
   bool get canGoBack => _canGoBack;
   bool get canGoForward => _canGoForward;
@@ -56,6 +68,21 @@ class WebViewPageState extends State<WebViewPage> {
     if (mounted) setState(() { _canGoBack = back; _canGoForward = forward; });
   }
 
+  void _logTraffic(String source, String? url) {
+    if (url == null || url.isEmpty || url == 'about:blank') return;
+    final lower = url.toLowerCase();
+    if (SniffRegistry.isEv1Url(url) ||
+        lower.contains('getplayurl') ||
+        lower.contains('getplaytoken') ||
+        lower.contains('listvideokeyframe') ||
+        lower.contains('.m3u8') ||
+        lower.contains('.mp4') ||
+        lower.contains('.ev1') ||
+        lower.contains('.ev2')) {
+      sniffLog('traffic', '[$source] $url');
+    }
+  }
+
   void _registerUrl(
     String? url, {
     String? title,
@@ -63,7 +90,8 @@ class WebViewPageState extends State<WebViewPage> {
     Map<String, dynamic>? titleDebug,
   }) {
     if (url == null || url.isEmpty || url == 'about:blank') return;
-    if (!SniffRegistry.isEv1Url(url)) return;
+    _logTraffic(source, url);
+    if (!SniffRegistry.isSniffableUrl(url)) return;
 
     final catalogTitle = widget.sniffRegistry.lookupCatalogTitle(widget.tabId, url);
 
@@ -108,35 +136,73 @@ class WebViewPageState extends State<WebViewPage> {
       }
     }
 
+    if (ajaxRequest.readyState == AjaxRequestReadyState.DONE &&
+        ajaxRequest.status == 200) {
+      final text = ajaxRequest.responseText;
+      if (text != null && text.isNotEmpty) {
+        final found = SniffRegistry.extractUrlsFromText(text);
+        sniffLog(
+          'ajax',
+          'DONE $url status=${ajaxRequest.status} body=${text.length} ev=${found.length}',
+        );
+        for (final item in found) {
+          _registerUrl(item, source: 'ajax-body');
+        }
+      }
+    }
+
     return AjaxRequestAction.PROCEED;
   }
 
   @override
   Widget build(BuildContext context) {
     final useMobileMode = shouldUseMobileBrowserMode(context);
+    final sniffJs = _sniffJs;
+    if (sniffJs == null) {
+      return const ColoredBox(
+        color: Color(0xFFF2F1F6),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final userScripts = <UserScript>[
+      if (useMobileMode)
+        UserScript(
+          source: mobileViewportScript,
+          injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+          forMainFrameOnly: false,
+          contentWorld: ContentWorld.PAGE,
+        ),
+      UserScript(
+        source: sniffJs,
+        injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+        forMainFrameOnly: false,
+        contentWorld: ContentWorld.PAGE,
+      ),
+    ];
 
     return InAppWebView(
       initialUrlRequest: widget.initialUrl == 'about:blank'
           ? null
           : URLRequest(url: WebUri(widget.initialUrl)),
       initialSettings: browserWebViewSettings(useMobileMode: useMobileMode),
+      initialUserScripts: UnmodifiableListView(userScripts),
       onWebViewCreated: (controller) async {
         _controller = controller;
         widget.controllerReady(controller);
-        if (useMobileMode) {
-          await controller.addUserScript(
-            userScript: UserScript(
-              source: mobileViewportScript,
-              injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-            ),
-          );
-        }
-        final sniffJs = await rootBundle.loadString('assets/injected_sniff.js');
-        await controller.addUserScript(
-          userScript: UserScript(
-            source: sniffJs,
-            injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-          ),
+        sniffLog(
+          'webview',
+          'created tab=${widget.tabId} mobile=$useMobileMode '
+          'ua=${browserUserAgent(useMobileMode: useMobileMode)} '
+          'url=${widget.initialUrl}',
+        );
+        controller.addJavaScriptHandler(
+          handlerName: 'sniffLog',
+          callback: (args) {
+            if (args.isEmpty) return null;
+            sniffLog('js', args.first.toString());
+            return null;
+          },
         );
         controller.addJavaScriptHandler(
           handlerName: 'ev1Detected',
@@ -163,21 +229,35 @@ class WebViewPageState extends State<WebViewPage> {
         return null;
       },
       shouldInterceptFetchRequest: (controller, request) async {
-        _registerUrl(request.url.toString(), source: 'intercept-fetch');
+        final url = request.url.toString();
+        final rewritten = Ev1Url.rewritePlayUrl(url);
+        _registerUrl(rewritten, source: 'intercept-fetch');
+        if (rewritten != url) {
+          sniffLog('rewrite', 'fetch $url -> $rewritten');
+          request.url = WebUri(rewritten);
+          return request;
+        }
         return null;
       },
       shouldInterceptAjaxRequest: (controller, request) async {
         final url = request.url?.toString() ?? '';
-        if (url.contains('getPlayToken') || url.contains('getPlayUrl')) {
-          widget.sniffRegistry.trackPlayVid(widget.tabId, url);
+        final rewritten = Ev1Url.rewritePlayUrl(url);
+        if (url.contains('getPlayToken') || rewritten.contains('getPlayUrl')) {
+          widget.sniffRegistry.trackPlayVid(widget.tabId, rewritten);
         }
-        _registerUrl(url, source: 'intercept-ajax');
+        _registerUrl(rewritten, source: 'intercept-ajax');
+        if (rewritten != url) {
+          sniffLog('rewrite', 'ajax $url -> $rewritten');
+          request.url = WebUri(rewritten);
+          return request;
+        }
         return null;
       },
       onAjaxReadyStateChange: _onAjaxReadyStateChange,
       onLoadResource: (controller, resource) =>
           _registerUrl(resource.url?.toString(), source: 'load-resource'),
       onLoadStart: (controller, url) {
+        sniffLog('webview', 'loadStart ${url?.toString() ?? ''}');
         widget.onUrlChanged(url?.toString() ?? '');
         _updateNavState();
       },

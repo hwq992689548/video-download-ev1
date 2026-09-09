@@ -5,7 +5,6 @@ import '../../core/providers.dart';
 import '../../core/sniff_registry.dart';
 import '../../theme/app_theme.dart';
 import 'address_bar.dart';
-import 'bookmarks_sheet.dart';
 import 'browser_tab_bar.dart';
 import 'sniff_panel.dart';
 import 'webview_page.dart';
@@ -67,21 +66,10 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
             currentUrl: activeTab.url == 'about:blank' ? '' : activeTab.url,
             canGoBack: webView?.canGoBack ?? false,
             canGoForward: webView?.canGoForward ?? false,
-            sniffCount: sniffCount,
             onBack: () => webView?.goBack(),
             onForward: () => webView?.goForward(),
             onRefresh: () => webView?.reload(),
             onSubmit: _navigate,
-            onBookmarks: () => showModalBottomSheet<void>(
-              context: context,
-              isScrollControlled: true,
-              builder: (_) => BookmarksSheet(
-                currentUrl: activeTab.url,
-                currentTitle: activeTab.title,
-                onNavigate: _navigate,
-              ),
-            ),
-            onSniff: () => setState(() => _showSniffPanel = !_showSniffPanel),
           ),
           const Divider(height: 1),
           Expanded(

@@ -57,8 +57,8 @@ class SniffPanel extends ConsumerWidget {
                           padding: EdgeInsets.all(16),
                           child: Text(
                             '播放视频后自动嗅探。\n'
-                            '若未出现：点地址栏右侧「探测链接」打开此面板；\n'
-                            '或在「视频列表」Tab 右上角使用下载测试。',
+                            '若未出现：点导航栏右侧「探测链接」打开此面板；\n'
+                            '或在「设置」Tab 使用下载测试。',
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -111,13 +111,8 @@ class _SniffTile extends ConsumerWidget {
     Widget trailing;
     if (existing != null) {
       trailing = OutlinedButton(
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => VideoPlayerScreen(video: existing),
-            ),
-          );
-        },
+        onPressed: () =>
+            VideoPlayerScreen.playWithSystemPlayer(context, existing),
         child: const Text('播放'),
       );
     } else if (entry.status == SniffStatus.done) {
@@ -211,7 +206,12 @@ class _SniffTile extends ConsumerWidget {
     if (!context.mounted) return;
 
     await ensureEv1LinkRecorded(ref, entry.url);
-    registry.updateEntry(tabId, entry.url, status: SniffStatus.downloading);
+    registry.updateEntry(
+      tabId,
+      entry.url,
+      status: SniffStatus.downloading,
+      title: fileName,
+    );
     await manager.enqueue(
       entry.url,
       suggestedName: fileName,
